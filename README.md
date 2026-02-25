@@ -212,6 +212,7 @@ AWS deployment: [Deployment Guide](docs/deployment.md) | Local development detai
 - [Development Guide](docs/development.md)
 - [Project Progress Plan](docs/progress.md)
 - [User Guide (Quick Start)](docs/user-guide.md)
+- [OpenClaw Architecture Analysis](docs/openclaw-analysis.md)
 
 ## Contributing
 
