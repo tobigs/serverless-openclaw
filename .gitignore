@@ -8,6 +8,7 @@ cdk.out/
 *.js.map
 *.d.ts.map
 *.tsbuildinfo
+slides/*.pdf
 
 # Tools
 .omc/
@@ -29,5 +30,3 @@ Thumbs.db
 
 # References (cloned repos for study)
 references/
-
-slides/
