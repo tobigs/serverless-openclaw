@@ -81,15 +81,15 @@ graph TB
     subgraph "Gateway Server :18789"
         WS[WebSocket Server]
         HTTP[HTTP Endpoints]
-        Auth[Auth Layer\ntoken / password / device-token]
-        MethodRouter[Method Router\n86+ RPC methods]
+        Auth["Auth Layer<br/>token / password / device-token"]
+        MethodRouter["Method Router<br/>86+ RPC methods"]
     end
 
     subgraph "Agent Runtime"
         Dispatch[Auto-Reply Dispatcher]
-        PiAgent[Pi Agent Runtime\nEmbedded Mode]
-        Tools[Tool System\nbash / read / write / edit / MCP]
-        SessionMgr[Session Manager\nJSONL Transcripts]
+        PiAgent["Pi Agent Runtime<br/>Embedded Mode"]
+        Tools["Tool System<br/>bash / read / write / edit / MCP"]
+        SessionMgr["Session Manager<br/>JSONL Transcripts"]
     end
 
     subgraph "LLM Providers"
@@ -107,10 +107,10 @@ graph TB
     end
 
     subgraph "Channel Integrations"
-        TG[Telegram\ngrammY]
-        Discord[Discord\ndiscord.js]
-        Slack[Slack\n@slack/bolt]
-        WA[WhatsApp\nBaileys]
+        TG["Telegram<br/>grammY"]
+        Discord["Discord<br/>discord.js"]
+        Slack["Slack<br/>@slack/bolt"]
+        WA["WhatsApp<br/>Baileys"]
         More[Signal / LINE / Matrix / Teams / ...]
     end
 
