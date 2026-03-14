@@ -3,9 +3,11 @@ import {
   TABLE_NAMES,
   KEY_PREFIX,
   PERIODIC_BACKUP_INTERVAL_MS,
+  SESSION_S3_PREFIX,
+  SESSION_DEFAULT_AGENT,
 } from "@serverless-openclaw/shared";
 import type { TaskStatus } from "@serverless-openclaw/shared";
-import { backupToS3 } from "./s3-sync.js";
+import { backupToS3, restoreFromS3 } from "./s3-sync.js";
 
 interface LifecycleDeps {
   dynamoSend: (command: unknown) => Promise<unknown>;
@@ -14,6 +16,8 @@ interface LifecycleDeps {
   s3Bucket: string;
   s3Prefix: string;
   workspacePath: string;
+  /** Path to OpenClaw sessions directory (e.g., /home/openclaw/.openclaw) */
+  openclawHome?: string;
 }
 
 export class LifecycleManager {
@@ -61,6 +65,26 @@ export class LifecycleManager {
       bucket: this.deps.s3Bucket,
       prefix: this.deps.s3Prefix,
       localPath: this.deps.workspacePath,
+    });
+    // Sync OpenClaw sessions to unified S3 path (shared with Lambda agent)
+    if (this.deps.openclawHome) {
+      const sessionsLocalPath = `${this.deps.openclawHome}/agents/${SESSION_DEFAULT_AGENT}/sessions`;
+      await backupToS3({
+        bucket: this.deps.s3Bucket,
+        prefix: `${SESSION_S3_PREFIX}/${this.deps.userId}/agents/${SESSION_DEFAULT_AGENT}/sessions`,
+        localPath: sessionsLocalPath,
+      });
+    }
+  }
+
+  /** Restore sessions from unified S3 path (populated by Lambda or previous Fargate) */
+  async restoreSessionsFromS3(): Promise<void> {
+    if (!this.deps.openclawHome) return;
+    const sessionsLocalPath = `${this.deps.openclawHome}/agents/${SESSION_DEFAULT_AGENT}/sessions`;
+    await restoreFromS3({
+      bucket: this.deps.s3Bucket,
+      prefix: `${SESSION_S3_PREFIX}/${this.deps.userId}/agents/${SESSION_DEFAULT_AGENT}/sessions`,
+      localPath: sessionsLocalPath,
     });
   }
 

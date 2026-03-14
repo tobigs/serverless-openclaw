@@ -5,12 +5,18 @@ import {
 } from "@aws-sdk/client-s3";
 import fs from "node:fs";
 import path from "node:path";
+import {
+  SESSION_S3_PREFIX,
+  SESSION_DEFAULT_AGENT,
+} from "@serverless-openclaw/shared";
 
 /**
  * Syncs OpenClaw session files between S3 and Lambda /tmp.
  *
- * S3 layout: s3://{bucket}/sessions/{userId}/{sessionId}.jsonl
- * Local layout: {localBase}/agents/default/sessions/{sessionId}.jsonl
+ * Unified S3 layout (shared with Fargate):
+ *   s3://{bucket}/sessions/{userId}/agents/default/sessions/{sessionId}.jsonl
+ * Local layout:
+ *   {localBase}/agents/default/sessions/{sessionId}.jsonl
  */
 const SAFE_ID = /^[a-zA-Z0-9_:-]{1,128}$/;
 
@@ -89,7 +95,7 @@ export class SessionSync {
     return path.join(
       this.localBase,
       "agents",
-      "default",
+      SESSION_DEFAULT_AGENT,
       "sessions",
       `${sessionId}.jsonl`,
     );
@@ -98,7 +104,7 @@ export class SessionSync {
   private getS3Key(userId: string, sessionId: string): string {
     validateId(userId, "userId");
     validateId(sessionId, "sessionId");
-    return `sessions/${userId}/${sessionId}.jsonl`;
+    return `${SESSION_S3_PREFIX}/${userId}/agents/${SESSION_DEFAULT_AGENT}/sessions/${sessionId}.jsonl`;
   }
 }
 

@@ -35,6 +35,11 @@ export const OTP_LENGTH = 6;
 export const WATCHDOG_INTERVAL_MINUTES = 5;
 export const MIN_UPTIME_MINUTES = 5;
 
+// Session S3 paths (shared between Lambda and Fargate)
+export const SESSION_S3_PREFIX = "sessions";
+export const SESSION_DEFAULT_AGENT = "default";
+export const SESSION_DEFAULT_KEY = "main";
+
 // Prewarm
 export const PREWARM_USER_ID = "system:prewarm";
 export const DEFAULT_PREWARM_DURATION_MIN = 60;

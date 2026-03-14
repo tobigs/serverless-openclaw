@@ -89,7 +89,7 @@ describe("session-sync", () => {
       const { GetObjectCommand } = await import("@aws-sdk/client-s3");
       expect(GetObjectCommand).toHaveBeenCalledWith({
         Bucket: "test-bucket",
-        Key: "sessions/user-123/session-456.jsonl",
+        Key: "sessions/user-123/agents/default/sessions/session-456.jsonl",
       });
     });
 
@@ -122,7 +122,7 @@ describe("session-sync", () => {
       const { PutObjectCommand } = await import("@aws-sdk/client-s3");
       expect(PutObjectCommand).toHaveBeenCalledWith({
         Bucket: "test-bucket",
-        Key: "sessions/user-123/session-456.jsonl",
+        Key: "sessions/user-123/agents/default/sessions/session-456.jsonl",
         Body: sessionContent,
         ContentType: "application/x-ndjson",
       });
