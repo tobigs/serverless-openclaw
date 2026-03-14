@@ -80,6 +80,27 @@ export interface BridgeHealthResponse {
   status: "ok";
 }
 
+// === Lambda Agent ===
+export interface LambdaAgentEvent {
+  userId: string;
+  sessionId: string;
+  connectionId?: string;
+  message: string;
+  model?: string;
+  disableTools?: boolean;
+  channel: Channel;
+  telegramChatId?: string;
+}
+
+export interface LambdaAgentResponse {
+  success: boolean;
+  payloads?: Array<{ text?: string; mediaUrl?: string; isError?: boolean }>;
+  error?: string;
+  durationMs?: number;
+  provider?: string;
+  model?: string;
+}
+
 // === JSON-RPC 2.0 (implementation-plan.md §2.2) ===
 export interface JsonRpcRequest {
   jsonrpc: "2.0";

@@ -10,6 +10,7 @@ import {
   WebStack,
   MonitoringStack,
   SecretsStack,
+  LambdaAgentStack,
 } from "../lib/stacks/index.js";
 
 describe("CDK Stacks E2E — synth all stacks", () => {
@@ -22,6 +23,7 @@ describe("CDK Stacks E2E — synth all stacks", () => {
   let webTemplate: Template;
   let monitoringTemplate: Template;
   let secretsTemplate: Template;
+  let lambdaAgentTemplate: Template;
 
   beforeAll(() => {
     app = new cdk.App();
@@ -47,6 +49,12 @@ describe("CDK Stacks E2E — synth all stacks", () => {
       pendingMessagesTable: storage.pendingMessagesTable,
       dataBucket: storage.dataBucket,
       ecrRepository: storage.ecrRepository,
+    });
+
+    // Phase 2: Lambda Agent
+    const lambdaAgent = new LambdaAgentStack(app, "TestLambdaAgentStack", {
+      dataBucket: storage.dataBucket,
+      taskStateTable: storage.taskStateTable,
     });
 
     // Step 1-5: API Gateway + Lambda
@@ -83,6 +91,7 @@ describe("CDK Stacks E2E — synth all stacks", () => {
     apiTemplate = Template.fromStack(api);
     webTemplate = Template.fromStack(app.node.findChild("TestWebStack") as cdk.Stack);
     monitoringTemplate = Template.fromStack(monitoring);
+    lambdaAgentTemplate = Template.fromStack(lambdaAgent);
   });
 
   // ── SecretsStack ──
@@ -266,6 +275,53 @@ describe("CDK Stacks E2E — synth all stacks", () => {
           ],
         },
       });
+    });
+  });
+
+  // ── LambdaAgentStack ──
+
+  describe("LambdaAgentStack", () => {
+    it("Lambda DockerImageFunction", () => {
+      lambdaAgentTemplate.resourceCountIs("AWS::Lambda::Function", 1);
+    });
+
+    it("Lambda with ARM64, 2048MB, 15min timeout", () => {
+      lambdaAgentTemplate.hasResourceProperties("AWS::Lambda::Function", {
+        Architectures: ["arm64"],
+        MemorySize: 2048,
+        Timeout: 900,
+        EphemeralStorage: { Size: 2048 },
+      });
+    });
+
+    it("Lambda has HOME=/tmp and SESSION_BUCKET env vars", () => {
+      const functions = lambdaAgentTemplate.findResources("AWS::Lambda::Function");
+      const fn = Object.values(functions)[0] as Record<string, unknown>;
+      const env = ((fn.Properties as Record<string, unknown>).Environment as Record<string, unknown>).Variables as Record<string, unknown>;
+      expect(env.HOME).toBe("/tmp");
+      expect(env.SSM_ANTHROPIC_API_KEY).toBe("/serverless-openclaw/secrets/anthropic-api-key");
+      expect(env.SESSION_BUCKET).toBeDefined();
+    });
+
+    it("ECR repository for lambda-agent images", () => {
+      lambdaAgentTemplate.resourceCountIs("AWS::ECR::Repository", 1);
+      lambdaAgentTemplate.hasResourceProperties("AWS::ECR::Repository", {
+        RepositoryName: "serverless-openclaw-lambda-agent",
+      });
+    });
+
+    it("SSM parameter for Lambda function ARN", () => {
+      lambdaAgentTemplate.hasResourceProperties("AWS::SSM::Parameter", {
+        Name: "/serverless-openclaw/lambda-agent/function-arn",
+      });
+    });
+
+    it("no NAT Gateway", () => {
+      lambdaAgentTemplate.resourceCountIs("AWS::EC2::NatGateway", 0);
+    });
+
+    it("Log group", () => {
+      lambdaAgentTemplate.resourceCountIs("AWS::Logs::LogGroup", 1);
     });
   });
 

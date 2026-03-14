@@ -356,5 +356,71 @@ describe("message service", () => {
       expect(deps.deleteTaskState).toHaveBeenCalledWith("user-123");
       expect(deps.startTask).toHaveBeenCalled();
     });
+
+    it("should invoke Lambda agent when agentRuntime is 'lambda'", async () => {
+      const mockInvokeLambda = vi.fn().mockResolvedValue({
+        success: true,
+        payloads: [{ text: "Lambda response" }],
+      });
+
+      const deps = makeDeps({
+        agentRuntime: "lambda",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        sessionId: "session-456",
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("lambda");
+      expect(mockInvokeLambda).toHaveBeenCalledWith(
+        expect.objectContaining({
+          functionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+          userId: "user-123",
+          sessionId: "session-456",
+          message: "hello",
+          channel: "web",
+        }),
+      );
+      // Should NOT touch Fargate path
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(deps.startTask).not.toHaveBeenCalled();
+    });
+
+    it("should throw when Lambda agent returns failure", async () => {
+      const mockInvokeLambda = vi.fn().mockResolvedValue({
+        success: false,
+        error: "Agent timeout",
+      });
+
+      const deps = makeDeps({
+        agentRuntime: "lambda",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+      });
+
+      await expect(routeMessage(deps)).rejects.toThrow("Agent timeout");
+    });
+
+    it("should use Fargate path when agentRuntime is 'fargate'", async () => {
+      const deps = makeDeps({
+        agentRuntime: "fargate",
+      });
+
+      const result = await routeMessage(deps);
+
+      // Falls through to Fargate path (no task → start new)
+      expect(result).toBe("started");
+      expect(deps.startTask).toHaveBeenCalled();
+    });
+
+    it("should use Fargate path when agentRuntime is not set", async () => {
+      const deps = makeDeps();
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("started");
+      expect(deps.startTask).toHaveBeenCalled();
+    });
   });
 });

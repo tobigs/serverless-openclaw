@@ -3,6 +3,7 @@ export const SSM_PARAMS = {
   TASK_ROLE_ARN: "/serverless-openclaw/compute/task-role-arn",
   EXECUTION_ROLE_ARN: "/serverless-openclaw/compute/execution-role-arn",
   CLUSTER_ARN: "/serverless-openclaw/compute/cluster-arn",
+  LAMBDA_AGENT_FUNCTION_ARN: "/serverless-openclaw/lambda-agent/function-arn",
 } as const;
 
 export const SSM_SECRETS = {

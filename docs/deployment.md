@@ -353,7 +353,34 @@ npx cdk destroy --all --profile $AWS_PROFILE
 
 ---
 
-## 9. Troubleshooting
+## 9. Lambda Agent Deployment
+
+### Prerequisites
+
+Set the `AGENT_RUNTIME` environment variable before deploying:
+
+```bash
+export AGENT_RUNTIME=lambda  # or 'both' for gradual migration
+```
+
+### Build and Push Lambda Container Image
+
+```bash
+cd packages/lambda-agent
+docker build --platform linux/arm64 -t serverless-openclaw-lambda-agent .
+# Tag and push to ECR (LambdaAgentStack creates the repository)
+```
+
+### Deploy
+
+```bash
+cd packages/cdk
+AGENT_RUNTIME=lambda npx cdk deploy LambdaAgentStack --profile $AWS_PROFILE --region $AWS_REGION
+```
+
+---
+
+## 10. Troubleshooting
 
 ### CDK synth failure: `Cannot find asset`
 

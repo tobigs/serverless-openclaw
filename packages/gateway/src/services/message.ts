@@ -12,7 +12,9 @@ import type {
   PendingMessageItem,
   TaskStateItem,
 } from "@serverless-openclaw/shared";
+import type { LambdaAgentResponse } from "@serverless-openclaw/shared";
 import type { StartTaskParams } from "./container.js";
+import type { InvokeLambdaAgentParams } from "./lambda-agent.js";
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status: number; statusText: string }>;
 type Send = (command: unknown) => Promise<unknown>;
@@ -64,11 +66,37 @@ export interface RouteDeps {
   savePendingMessage: (item: PendingMessageItem) => Promise<void>;
   deleteTaskState: (userId: string) => Promise<void>;
   startTaskParams: StartTaskParams;
+  /** Lambda agent runtime support (Phase 2) */
+  agentRuntime?: "lambda" | "fargate";
+  invokeLambdaAgent?: (params: InvokeLambdaAgentParams) => Promise<LambdaAgentResponse>;
+  lambdaAgentFunctionArn?: string;
+  sessionId?: string;
 }
 
-export type RouteResult = "sent" | "queued" | "started";
+export type RouteResult = "sent" | "queued" | "started" | "lambda";
 
 export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
+  // Phase 2: Lambda agent path
+  if (
+    deps.agentRuntime === "lambda" &&
+    deps.invokeLambdaAgent &&
+    deps.lambdaAgentFunctionArn
+  ) {
+    const response = await deps.invokeLambdaAgent({
+      functionArn: deps.lambdaAgentFunctionArn,
+      userId: deps.userId,
+      sessionId: deps.sessionId ?? `session-${deps.userId}`,
+      message: deps.message,
+      channel: deps.channel,
+      connectionId: deps.connectionId,
+    });
+    if (!response.success) {
+      throw new Error(response.error ?? "Lambda agent failed");
+    }
+    return "lambda";
+  }
+
+  // Fargate path (default)
   const taskState = await deps.getTaskState(deps.userId);
 
   if (taskState?.status === "Running" && taskState.publicIp) {

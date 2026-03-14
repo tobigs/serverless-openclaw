@@ -1017,3 +1017,38 @@ cdk deploy --all
 | `/serverless-openclaw/lambda/watchdog` | 7 days | Lambda |
 | `/serverless-openclaw/lambda/prewarm` | 7 days | Lambda |
 | `/serverless-openclaw/fargate/openclaw` | 14 days | Fargate |
+
+---
+
+## 12. Lambda Agent Architecture (Phase 2)
+
+When `AGENT_RUNTIME=lambda`, the system runs OpenClaw's agent directly in a Lambda Container Image instead of Fargate.
+
+### Data Flow
+
+```
+Client → API Gateway (WS/HTTP) → Lambda → Lambda Agent Container → Anthropic API
+                                              ↕ (S3 session sync)
+                                              S3
+```
+
+### Key Differences from Fargate
+
+| Aspect | Fargate | Lambda |
+|--------|---------|--------|
+| Fixed cost | ~$15/month (idle) | $0 |
+| Per-request cost | Included | ~$0.002/min |
+| Cold start | ~40-60s | ~10-30s |
+| Session storage | Local filesystem + S3 backup | S3 (synced to /tmp) |
+| Max execution | Unlimited | 15 minutes |
+| Tool execution | Full (bash, file ops) | Limited (/tmp workspace) |
+
+### Feature Flag
+
+`AGENT_RUNTIME` environment variable controls which runtime is deployed:
+
+| Value | ComputeStack | LambdaAgentStack | Default |
+|-------|-------------|-------------------|---------|
+| `fargate` | Yes | No | Yes (backward compatible) |
+| `lambda` | No | Yes | |
+| `both` | Yes | Yes | |

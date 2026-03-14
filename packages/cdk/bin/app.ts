@@ -10,9 +10,12 @@ import {
   WebStack,
   MonitoringStack,
   SecretsStack,
+  LambdaAgentStack,
 } from "../lib/stacks/index.js";
 
 const app = new cdk.App();
+
+const agentRuntime = process.env.AGENT_RUNTIME ?? "fargate"; // default: backward compatible
 
 // Secrets (SSM SecureString parameters)
 const secrets = new SecretsStack(app, "SecretsStack");
@@ -24,22 +27,34 @@ const storage = new StorageStack(app, "StorageStack");
 // Step 1-6: Auth
 const auth = new AuthStack(app, "AuthStack");
 
-// Step 1-7: Compute
-const compute = new ComputeStack(app, "ComputeStack", {
-  vpc: network.vpc,
-  fargateSecurityGroup: network.fargateSecurityGroup,
-  conversationsTable: storage.conversationsTable,
-  settingsTable: storage.settingsTable,
-  taskStateTable: storage.taskStateTable,
-  connectionsTable: storage.connectionsTable,
-  pendingMessagesTable: storage.pendingMessagesTable,
-  dataBucket: storage.dataBucket,
-  ecrRepository: storage.ecrRepository,
-  fargateCpu: process.env.FARGATE_CPU ? Number(process.env.FARGATE_CPU) : undefined,
-  fargateMemory: process.env.FARGATE_MEMORY ? Number(process.env.FARGATE_MEMORY) : undefined,
-});
+// Step 1-7: Compute (Fargate) — skip when AGENT_RUNTIME=lambda
+let compute: ComputeStack | undefined;
+if (agentRuntime !== "lambda") {
+  compute = new ComputeStack(app, "ComputeStack", {
+    vpc: network.vpc,
+    fargateSecurityGroup: network.fargateSecurityGroup,
+    conversationsTable: storage.conversationsTable,
+    settingsTable: storage.settingsTable,
+    taskStateTable: storage.taskStateTable,
+    connectionsTable: storage.connectionsTable,
+    pendingMessagesTable: storage.pendingMessagesTable,
+    dataBucket: storage.dataBucket,
+    ecrRepository: storage.ecrRepository,
+    fargateCpu: process.env.FARGATE_CPU ? Number(process.env.FARGATE_CPU) : undefined,
+    fargateMemory: process.env.FARGATE_MEMORY ? Number(process.env.FARGATE_MEMORY) : undefined,
+  });
+  compute.addDependency(secrets);
+}
 
-compute.addDependency(secrets);
+// Phase 2: Lambda Agent — skip when AGENT_RUNTIME=fargate
+let lambdaAgent: LambdaAgentStack | undefined;
+if (agentRuntime !== "fargate") {
+  lambdaAgent = new LambdaAgentStack(app, "LambdaAgentStack", {
+    dataBucket: storage.dataBucket,
+    taskStateTable: storage.taskStateTable,
+  });
+  lambdaAgent.addDependency(secrets);
+}
 
 // Step 1-5: API Gateway + Lambda
 // Note: compute resources (TaskDef, Cluster ARNs) read from SSM to avoid cross-stack export issues
@@ -53,8 +68,11 @@ const api = new ApiStack(app, "ApiStack", {
   pendingMessagesTable: storage.pendingMessagesTable,
   userPool: auth.userPool,
   userPoolClient: auth.userPoolClient,
+  agentRuntime,
 });
-api.addDependency(compute);
+if (compute) {
+  api.addDependency(compute);
+}
 api.addDependency(secrets);
 
 // Step 1-8: Web UI (S3 + CloudFront)

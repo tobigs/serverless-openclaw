@@ -35,6 +35,8 @@ export interface ApiStackProps extends cdk.StackProps {
   pendingMessagesTable: dynamodb.ITable;
   userPool: cognito.IUserPool;
   userPoolClient: cognito.IUserPoolClient;
+  /** Agent runtime mode: 'fargate' | 'lambda' | 'both'. Default: 'fargate' */
+  agentRuntime?: string;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -58,6 +60,13 @@ export class ApiStack extends cdk.Stack {
     const subnetIds = props.vpc.publicSubnets.map((s) => s.subnetId).join(",");
     const securityGroupIds = props.fargateSecurityGroup.securityGroupId;
 
+    // Lambda agent ARN from SSM (Phase 2)
+    const agentRuntime = props.agentRuntime ?? "fargate";
+    const lambdaAgentEnabled = agentRuntime === "lambda" || agentRuntime === "both";
+    const lambdaAgentFunctionArn = lambdaAgentEnabled
+      ? ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.LAMBDA_AGENT_FUNCTION_ARN)
+      : "";
+
     const commonEnv: Record<string, string> = {
       CONVERSATIONS_TABLE: props.conversationsTable.tableName,
       SETTINGS_TABLE: props.settingsTable.tableName,
@@ -68,6 +77,8 @@ export class ApiStack extends cdk.Stack {
       TASK_DEFINITION_ARN: taskDefArn,
       SUBNET_IDS: subnetIds,
       SECURITY_GROUP_IDS: securityGroupIds,
+      AGENT_RUNTIME: agentRuntime,
+      LAMBDA_AGENT_FUNCTION_ARN: lambdaAgentFunctionArn,
     };
 
     // Common bundling options for NodejsFunction
@@ -227,6 +238,19 @@ export class ApiStack extends cdk.Stack {
           ],
         }),
       );
+    }
+
+    // Lambda agent invoke permission (Phase 2)
+    if (lambdaAgentEnabled) {
+      const agentInvokeFunctions = [wsMessageFn, telegramWebhookFn];
+      for (const fn of agentInvokeFunctions) {
+        fn.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ["lambda:InvokeFunction"],
+            resources: [lambdaAgentFunctionArn],
+          }),
+        );
+      }
     }
 
     // CloudWatch read access for watchdog dynamic timeout
