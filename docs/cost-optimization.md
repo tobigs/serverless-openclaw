@@ -217,6 +217,8 @@ PREWARM_DURATION=60                     # Keep container alive for 60 minutes
 
 ## 8. Alternative Reviewed but Not Adopted: Lambda Containers
 
+> **Update (2026-03-15)**: This analysis was superseded by Phase 2 Lambda Container Migration. OpenClaw's `runEmbeddedPiAgent()` runs directly in Lambda without the Gateway server, achieving 1.35s cold start and $0 idle cost. See [Lambda Migration Journey](lambda-migration-journey.md) for details.
+
 Using container-based Lambda instead of ECS Fargate Spot was evaluated but not adopted due to incompatibility with OpenClaw's characteristics.
 
 ### Lambda Container Image Key Limitations
@@ -268,6 +270,22 @@ In the current architecture, Lambda is used in the **Gateway role** (authenticat
 - [Lambda Pricing](https://aws.amazon.com/lambda/pricing/)
 - [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter)
 - [Lambda Response Streaming](https://aws.amazon.com/blogs/compute/using-response-streaming-with-aws-lambda-web-adapter-to-optimize-performance/)
+
+---
+
+## 9. Lambda Agent Cost (Phase 2)
+
+With `AGENT_RUNTIME=lambda`, all fixed compute costs are eliminated.
+
+| Component | Monthly Cost |
+|-----------|-------------|
+| Lambda execution (100 req × 1.5s × 2048MB) | ~$0.005 |
+| S3 session storage | ~$0.01 |
+| DynamoDB (session lock) | ~$0.001 |
+| ECR image storage | ~$0.10 |
+| **Total** | **~$0.12** |
+
+Compared to Fargate (~$15/month idle), Lambda reduces compute costs by **99%** for low-usage scenarios.
 
 ---
 

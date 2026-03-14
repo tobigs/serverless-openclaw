@@ -138,6 +138,6 @@ Cold start: 1.35s, Warm: 0.12s (Lambda Duration). Implementation guide: Use `/la
 - `docs/PRD.md` — Product requirements
 - `docs/deployment.md` — AWS deployment guide (secrets, build, deploy, verification)
 - `docs/development.md` — Local development guide (environment, TDD, coding rules)
-- `docs/cold-start-optimization.md` — Cold start optimization (Phase 1 complete, Phase 2 in progress)
+- `docs/cold-start-optimization.md` — Cold start optimization (Phase 1 complete, Phase 2 complete via Lambda migration)
 - `docs/lambda-migration-plan.md` — Phase 2 Lambda migration plan (architecture, steps, cost analysis)
 - `docs/lambda-migration-journey.md` — Phase 2 migration journey (timeline, obstacles, learnings)

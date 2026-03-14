@@ -67,7 +67,7 @@ Click the **Logout** button in the top-right corner of the chat interface.
 
 ## Tips
 
-- **Cold start delay**: The first message after a period of inactivity triggers a container startup (~68 seconds). Subsequent messages are instant while the agent is running.
+- **Cold start delay**: The first message after a period of inactivity may trigger a startup delay. With Lambda runtime (default): ~1-2 seconds. With Fargate runtime: ~40-60 seconds (first-time container startup). Subsequent messages are instant while the agent is running.
 - **Predictive pre-warming**: If your administrator has enabled pre-warming, the agent container starts automatically at scheduled times (e.g., the start of your work hours). During pre-warmed periods, your first message gets an **instant response** with no cold start delay.
 - **Auto shutdown**: The agent automatically shuts down after a period of inactivity to minimize costs. Your next message will wake it up again.
 - **Message queuing**: Messages sent during cold start are not lost. They are queued and delivered to the agent once it is ready.

@@ -197,9 +197,9 @@ Between 06:48-06:50, 6 Lambda invocations failed with "fetch failed" at ~10.5s e
 
 ---
 
-## Phase 2: Gateway Init Reduction (In Progress)
+## Phase 2: Gateway Init Reduction (Complete)
 
-> Research completed 2026-02-15. Implementation pending.
+> Research completed 2026-02-15. Lambda migration achieved via `runEmbeddedPiAgent()` in project Phase 2.
 
 Gateway init (~30-35s) remains the largest single bottleneck (~52% of total cold start). Since `openclaw gateway run` is an external binary, optimization options are constrained.
 
@@ -335,7 +335,7 @@ Cost calculation (US East reference, Seoul ~10-20% higher):
 | Approach | Status | Reason |
 | -------- | ------ | ------ |
 | Lambda SnapStart | Blocked (runtime) | Not available for Node.js (Java/Python 3.12+/.NET 8 only) |
-| Lambda migration | Blocked (architecture) | Gateway requires persistent WebSocket server + Chromium (see Section 2.3) |
+| Lambda migration | Blocked (architecture) | Gateway requires persistent WebSocket server + Chromium (see Section 2.3). (Note: Lambda migration was achieved in project Phase 2 via `runEmbeddedPiAgent()`, bypassing the Gateway server entirely) |
 | OpenClaw headless mode | Blocked (upstream) | No documented flags for disabling plugins or minimal mode |
 | CRIU checkpoint/restore | Blocked (Fargate) | No host-level kernel access on Fargate |
 | OpenClaw lazy plugin loading | Blocked (upstream) | Requires OpenClaw to support deferred init |

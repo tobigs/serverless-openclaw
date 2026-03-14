@@ -34,12 +34,15 @@ Cloudflare's MoltWorker demonstrated an approach to running OpenClaw serverlessl
 - **Authentication**: User authentication based on AWS Cognito
 - **Data Persistence**: S3 (files/backups) + DynamoDB (conversation history/settings/metadata)
 
-### Phase 2
+### Phase 2 (Complete)
+- **Lambda Container Migration**: Run OpenClaw's `runEmbeddedPiAgent()` directly in Lambda Container Image, bypassing the Fargate Gateway server. Achieves 1.35s cold start and $0 idle cost.
+
+### Phase 3
 - **Browser Automation**: Web browsing/automation with a container that includes headless Chromium
 - **Custom Skills Development**: Support for adding user-defined skills
 - **Settings UI**: Management interface for LLM provider selection, skill management, etc.
 
-### Phase 3
+### Phase 4
 - **Advanced Monitoring**: CloudWatch alerts, cost dashboard
 - **Scheduling**: Periodic task execution (EventBridge integration)
 - **Multi-Channel Expansion**: Additional messenger support for Discord, Slack, etc.
@@ -249,12 +252,15 @@ serverless-openclaw/
 │   │   │   └── app.ts              # CDK app entry point
 │   │   ├── lib/
 │   │   │   ├── stacks/
+│   │   │   │   ├── secrets-stack.ts
 │   │   │   │   ├── network-stack.ts
 │   │   │   │   ├── auth-stack.ts
 │   │   │   │   ├── api-stack.ts
 │   │   │   │   ├── compute-stack.ts
+│   │   │   │   ├── lambda-agent-stack.ts
 │   │   │   │   ├── storage-stack.ts
-│   │   │   │   └── web-stack.ts
+│   │   │   │   ├── web-stack.ts
+│   │   │   │   └── monitoring-stack.ts
 │   │   │   └── constructs/         # Reusable CDK constructs
 │   │   └── package.json
 │   │
@@ -269,6 +275,15 @@ serverless-openclaw/
 │   │   │   │   ├── message.ts      # Message routing
 │   │   │   │   └── auth.ts         # Authentication helpers
 │   │   │   └── index.ts
+│   │   └── package.json
+│   │
+│   ├── lambda-agent/               # Lambda Container Image (OpenClaw agent runtime)
+│   │   ├── src/
+│   │   │   ├── handler.ts          # Lambda handler entry point
+│   │   │   ├── agent-runner.ts     # runEmbeddedPiAgent() wrapper
+│   │   │   ├── session-sync.ts     # S3 session sync
+│   │   │   └── session-lock.ts     # DynamoDB session lock
+│   │   ├── Dockerfile
 │   │   └── package.json
 │   │
 │   ├── container/                  # OpenClaw Docker container
@@ -329,22 +344,32 @@ serverless-openclaw/
 | 1-9 | Data persistence | Conversation history storage/retrieval, user settings management |
 | 1-10 | Deployment/documentation | One-click deployment guide, README, configuration guide |
 
-### Phase 2: Browser Automation + Custom Skills
+### Phase 2: Lambda Container Migration (Complete)
 
 | Step | Task |
 |------|------|
-| 2-1 | Build Docker image with Chromium included |
-| 2-2 | Browser automation skill integration |
-| 2-3 | Custom skill upload/management API |
-| 2-4 | Settings management UI (LLM provider selection, skill management) |
+| 2-1 | Lambda Container Image + Handler (`packages/lambda-agent/`) |
+| 2-2 | CDK LambdaAgentStack (DockerImageFunction, ECR, IAM) |
+| 2-3 | Response Streaming Integration (`routeMessage` Lambda path) |
+| 2-4 | Session Lifecycle Management (DynamoDB conditional writes) |
+| 2-5 | Feature Flag + Documentation (`AGENT_RUNTIME` env var) |
 
-### Phase 3: Advanced Features
+### Phase 3: Browser Automation + Custom Skills
 
 | Step | Task |
 |------|------|
-| 3-1 | CloudWatch alerts + cost dashboard |
-| 3-2 | EventBridge-based periodic task scheduling |
-| 3-3 | Additional messenger support (Discord, Slack) |
+| 3-1 | Build Docker image with Chromium included |
+| 3-2 | Browser automation skill integration |
+| 3-3 | Custom skill upload/management API |
+| 3-4 | Settings management UI (LLM provider selection, skill management) |
+
+### Phase 4: Advanced Features
+
+| Step | Task |
+|------|------|
+| 4-1 | CloudWatch alerts + cost dashboard |
+| 4-2 | EventBridge-based periodic task scheduling |
+| 4-3 | Additional messenger support (Discord, Slack) |
 
 ---
 

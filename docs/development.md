@@ -59,11 +59,12 @@ export $(cat .env | xargs)
 ```
 serverless-openclaw/
 ├── packages/
-│   ├── shared/      # Shared types, constants (TABLE_NAMES, BRIDGE_PORT, etc.)
-│   ├── gateway/     # 7 Lambda handlers + 5 services
-│   ├── container/   # Fargate container (Bridge server + OpenClaw client)
-│   ├── web/         # React SPA (Vite + TypeScript)
-│   └── cdk/         # AWS CDK infrastructure definitions (6 stacks)
+│   ├── shared/        # Shared types, constants (TABLE_NAMES, BRIDGE_PORT, etc.)
+│   ├── gateway/       # 7 Lambda handlers + 9 services
+│   ├── container/     # Fargate container (Bridge server + OpenClaw client)
+│   ├── lambda-agent/  # Lambda Container Image (OpenClaw agent runtime)
+│   ├── web/           # React SPA (Vite + TypeScript)
+│   └── cdk/           # AWS CDK infrastructure definitions (9 stacks)
 ├── docs/            # Design/deployment/development docs
 ├── scripts/         # Deployment helper scripts
 ├── references/      # Reference projects (excluded from build/test)
@@ -117,7 +118,7 @@ Defines shared types and constants. Since all other packages reference this, che
 
 ### gateway
 
-Consists of 7 Lambda handlers and 5 services.
+Consists of 7 Lambda handlers and 9 services.
 
 ```
 packages/gateway/
@@ -125,7 +126,8 @@ packages/gateway/
 │   ├── handlers/    # ws-connect, ws-disconnect, ws-message,
 │   │                # telegram-webhook, api-handler, watchdog, prewarm
 │   ├── services/    # task-state, connections, conversations,
-│   │                # container, message, telegram
+│   │                # container, message, telegram,
+│   │                # identity, lambda-agent, secrets
 │   └── index.ts     # Handler re-export
 └── __tests__/       # Unit tests (vitest)
 ```
@@ -184,18 +186,21 @@ npx vite dev   # http://localhost:5173
 
 ### cdk
 
-Consists of 6 CDK stacks.
+Consists of 9 CDK stacks.
 
 | Stack | Key Resources |
 |-------|--------------|
+| SecretsStack | SSM SecureString parameters (5 secrets) |
 | NetworkStack | VPC, public subnets, VPC Gateway Endpoints, Security Group |
 | StorageStack | 5 DynamoDB tables, S3, ECR |
 | AuthStack | Cognito User Pool, App Client |
 | ComputeStack | ECS cluster, Fargate Task Definition |
+| LambdaAgentStack | Lambda Container Image (DockerImageFunction, ARM64, 2048MB, 15min) |
 | ApiStack | WebSocket API, HTTP API, 7 Lambda functions, EventBridge |
 | WebStack | S3 (web assets), CloudFront (OAC) |
+| MonitoringStack | CloudWatch Dashboard (6 rows, 10 custom metrics) |
 
-**Dependencies:** NetworkStack → StorageStack → {AuthStack, ComputeStack} → ApiStack → WebStack
+**Dependencies:** SecretsStack + NetworkStack → StorageStack → {AuthStack, ComputeStack, LambdaAgentStack} → ApiStack → WebStack + MonitoringStack
 
 ---
 

@@ -303,11 +303,8 @@ describe("CDK Stacks E2E — synth all stacks", () => {
       expect(env.SESSION_BUCKET).toBeDefined();
     });
 
-    it("ECR repository for lambda-agent images", () => {
-      lambdaAgentTemplate.resourceCountIs("AWS::ECR::Repository", 1);
-      lambdaAgentTemplate.hasResourceProperties("AWS::ECR::Repository", {
-        RepositoryName: "serverless-openclaw-lambda-agent",
-      });
+    it("no ECR repository (imported externally via fromRepositoryName)", () => {
+      lambdaAgentTemplate.resourceCountIs("AWS::ECR::Repository", 0);
     });
 
     it("SSM parameter for Lambda function ARN", () => {

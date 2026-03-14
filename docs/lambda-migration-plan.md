@@ -176,7 +176,7 @@ ws-message Lambda
 **Goal**: Make Lambda agent the default path and verify cost savings.
 
 **Deliverables**:
-- Feature flag: `AGENT_RUNTIME=lambda|fargate` (default: `lambda`)
+- Feature flag: `AGENT_RUNTIME=lambda|fargate` (default: `fargate`)
 - ComputeStack conditional: skip ECS resources when `AGENT_RUNTIME=lambda`
 - Cost monitoring dashboard update
 - Documentation update (`docs/deployment.md`, `docs/architecture.md`)

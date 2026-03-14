@@ -148,12 +148,14 @@ npx cdk deploy NetworkStack StorageStack --profile $AWS_PROFILE
 # Step 2: Auth + Compute
 npx cdk deploy AuthStack --profile $AWS_PROFILE
 npx cdk deploy ComputeStack --profile $AWS_PROFILE
+npx cdk deploy LambdaAgentStack --profile $AWS_PROFILE  # only when AGENT_RUNTIME=lambda or both
 
 # Step 3: API Gateway + Lambda
 npx cdk deploy ApiStack --profile $AWS_PROFILE
 
-# Step 4: Web UI
+# Step 4: Web UI + Monitoring
 npx cdk deploy WebStack --profile $AWS_PROFILE
+npx cdk deploy MonitoringStack --profile $AWS_PROFILE
 ```
 
 ### Push Docker Image
@@ -292,11 +294,11 @@ wscat -c "<WebSocketApiEndpoint>?token=<ID_TOKEN>"
 
 ### Telegram-Web Identity Linking Test
 
-1. Web UI → Settings → "Telegram 연동" 클릭 → 6자리 코드 확인 (5분 카운트다운)
-2. Telegram 봇에 `/link {코드}` 전송 → "계정 연동 완료!" 응답 확인
-3. Web UI → Settings → "Telegram ID {id} 연동됨" 표시 확인
-4. Telegram 메시지 전송 → Web과 동일한 컨테이너로 라우팅 확인 (TaskState PK가 Cognito UUID)
-5. (선택) Web UI → "연동 해제" → Telegram 메시지가 별도 컨테이너로 라우팅되는지 확인
+1. Web UI → Settings → Click "Link Telegram" → Confirm 6-digit code (5-minute countdown)
+2. Send `/link {code}` to the Telegram bot → Confirm "Account linked successfully!" response
+3. Web UI → Settings → Confirm "Telegram ID {id} linked" is displayed
+4. Send a Telegram message → Confirm routing to the same container as Web (TaskState PK is Cognito UUID)
+5. (Optional) Web UI → "Unlink" → Confirm Telegram messages are routed to a separate container
 
 ### Cold Start Measurement
 

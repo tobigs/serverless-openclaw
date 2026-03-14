@@ -110,7 +110,7 @@ graph TD
 | **1-1** | Project initialization | npm workspaces monorepo, TypeScript project references, CDK skeleton, shared types | `npm install` + `npx tsc --build` succeeds | **Complete** |
 | **1-2** | Infrastructure base | NetworkStack (VPC, public subnets, VPC GW Endpoints), StorageStack (5 DDB tables, 2 S3 buckets, ECR) | `cdk deploy NetworkStack StorageStack` succeeds | **Complete** |
 | **1-3** | OpenClaw container | Dockerfile, start-openclaw.sh, Bridge server, OpenClawClient (JSON-RPC 2.0), Lifecycle Manager | Local `docker build` + `docker run` + `/health` response | **Complete** |
-| **1-4** | Gateway Lambda | 6 Lambda functions (ws-connect, ws-message, ws-disconnect, telegram-webhook, api-handler, watchdog), 5 service modules | Unit tests (vitest) pass | **Complete** |
+| **1-4** | Gateway Lambda | 7 Lambda functions (ws-connect, ws-message, ws-disconnect, telegram-webhook, api-handler, watchdog, prewarm), 5 initial services (9 total after Phase 2 additions) | Unit tests (vitest) pass | **Complete** |
 | **1-5** | API Gateway | WebSocket API + REST API CDK, Cognito Authorizer, Lambda deployment, EventBridge Rule | `cdk deploy ApiStack` + WebSocket connection test | **Complete** |
 | **1-6** | Cognito auth | AuthStack (User Pool, App Client, PKCE flow, hosted domain) | Cognito test user + JWT issuance verified | **Complete** |
 | **1-7** | Compute | ComputeStack (ECS cluster, Fargate task definition, ARM64, FARGATE_SPOT, Secrets Manager) | `cdk deploy ComputeStack` + manual RunTask + `/health` response | **Complete** |
@@ -122,9 +122,9 @@ graph TD
 
 | Enhancement | Description | Status |
 |-------------|-------------|--------|
-| **Cold Start Optimization** | Docker 이미지 2.22GB→1.27GB (43% 감소), AWS CLI 제거, chown 최적화, SOCI lazy loading | **Complete** |
-| **CloudWatch Monitoring** | 8 커스텀 메트릭, MonitoringStack 대시보드 5행 | **Complete** |
-| **Telegram-Web Identity Linking** | OTP 기반 계정 연동 (Settings 테이블), resolveUserId, REST API 3개, Web UI 설정 페이지, CORS 설정 | **Complete** |
+| **Cold Start Optimization** | Docker image 2.22GB→1.27GB (43% reduction), AWS CLI removed, chown optimization, SOCI lazy loading | **Complete** |
+| **CloudWatch Monitoring** | 8 custom metrics, MonitoringStack dashboard 5 rows | **Complete** |
+| **Telegram-Web Identity Linking** | OTP-based account linking (Settings table), resolveUserId, 3 REST APIs, Web UI settings page, CORS configuration | **Complete** |
 
 ### Parallel Implementation Groups
 
@@ -153,7 +153,7 @@ Work groups that can be maximally parallelized based on dependencies:
 | | `telegram-webhook.ts` | `X-Telegram-Bot-Api-Secret-Token` verification, userId=`telegram:{fromId}` |
 | | `api-handler.ts` | GET /conversations, GET /status |
 | | `watchdog.ts` | Terminate tasks inactive for over 15 minutes, protect tasks under 5 minutes |
-| **index.ts** | `src/index.ts` | Re-export of all 6 handlers |
+| **index.ts** | `src/index.ts` | Re-export of all 7 handlers |
 
 Verification results:
 - Unit tests: 49 total (28 services + 21 handlers), all passing
@@ -189,9 +189,9 @@ Design patterns:
 Verification results:
 - TypeScript build: passing
 - Vite build: passing (dist/ generated)
-- CDK synth: passing (6 stacks including WebStack)
+- CDK synth: passing (6 stacks including WebStack, now 9 stacks)
 - ESLint: passing
-- Unit tests: 92 total, all passing (no existing tests broken)
+- Unit tests: 92 total (at time of completion), all passing (no existing tests broken)
 
 Design decisions:
 - S3 webBucket created inside WebStack (avoids StorageStack → WebStack circular dependency)
@@ -210,7 +210,7 @@ Design decisions:
 | **Script** | `scripts/setup-telegram-webhook.sh` | Webhook URL + secret token registration |
 
 Verification results:
-- Unit tests: 99 total, all passing (4 telegram service + 7 webhook handler tests new/modified)
+- Unit tests: 99 total (at time of completion), all passing (4 telegram service + 7 webhook handler tests new/modified)
 - TypeScript build: passing
 - CDK synth: passing
 - ESLint: passing
@@ -230,8 +230,8 @@ Design decisions:
 | **Config** | `vitest.config.ts` | Exclude `*.e2e.test.ts` from unit tests |
 
 Verification results:
-- Unit tests: 99 total, all passing (no existing tests broken)
-- E2E tests: 24 total, all passing (CDK synth for 6 stacks)
+- Unit tests: 99 total (at time of completion), all passing (no existing tests broken)
+- E2E tests: 24 total (at time of completion), all passing (CDK synth for 6 stacks, now 9 stacks)
 - TypeScript build: passing
 - ESLint: passing
 
@@ -240,7 +240,7 @@ E2E test coverage:
 - StorageStack: 5 DynamoDB tables (PAY_PER_REQUEST), GSI, S3, ECR
 - AuthStack: Cognito User Pool, SRP auth, User Pool Domain
 - ComputeStack: ECS cluster, Fargate Task Definition (ARM64), CloudWatch Log Group
-- ApiStack: 6 Lambda functions (ARM64), WebSocket API, HTTP API, EventBridge watchdog
+- ApiStack: 7 Lambda functions (ARM64), WebSocket API, HTTP API, EventBridge watchdog
 - WebStack: S3, CloudFront, OAC, SPA error responses
 
 ---
