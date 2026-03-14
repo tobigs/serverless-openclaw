@@ -10,8 +10,9 @@ A document tracking the overall progress and future plans for the Serverless Ope
 |-------|-------------|--------|
 | **Phase 0** | Documentation & Design | **Complete** |
 | **Phase 1** | MVP Implementation (10 steps) | **Complete** (10/10) |
-| Phase 2 | Browser Automation + Custom Skills | Not started |
-| Phase 3 | Advanced Features (Monitoring, Scheduling, Multi-channel) | Not started |
+| **Phase 2** | Lambda Container Migration (5 steps) | **Complete** (5/5) |
+| Phase 3 | Browser Automation + Custom Skills | Not started |
+| Phase 4 | Advanced Features (Monitoring, Scheduling, Multi-channel) | Not started |
 
 ---
 
@@ -244,38 +245,95 @@ E2E test coverage:
 
 ---
 
-## Phase 2: Browser Automation + Custom Skills (Not started)
+## Phase 2: Lambda Container Migration (Complete)
+
+Eliminates fixed compute costs by running OpenClaw's `runEmbeddedPiAgent()` directly in a Lambda Container Image, bypassing the Fargate Gateway server entirely. **Zero OpenClaw code modifications**.
+
+| Step | Goal | Key Deliverables | Status |
+|------|------|-----------------|--------|
+| **2-1** | Lambda Container Image + Handler | `packages/lambda-agent/` (handler, session-sync, config-init, agent-runner, session-lock, secrets, Dockerfile) | **Complete** |
+| **2-2** | CDK LambdaAgentStack | DockerImageFunction (ARM64, 2048MB, 15min), ECR, IAM (S3+SSM+DDB+CloudWatch) | **Complete** |
+| **2-3** | Response Streaming Integration | `routeMessage` Lambda path, `lambda-agent.ts` invoke service, `LambdaAgentEvent/Response` types | **Complete** |
+| **2-4** | Session Lifecycle Management | `SessionLock` (DynamoDB conditional writes), handler lock acquire/release | **Complete** |
+| **2-5** | Feature Flag + Documentation | `AGENT_RUNTIME` env var (fargate/lambda/both), conditional CDK stacks, docs updated | **Complete** |
+
+### Key Results
+
+| Metric | Fargate | Lambda | Improvement |
+|--------|---------|--------|-------------|
+| Idle cost | ~$15/month | **$0** | -100% |
+| Cold start | 40-60s | **1.35s** | -97.6% |
+| Warm start | — | **0.12s** (Lambda Duration) | — |
+| Per request (1.5s) | included | ~$0.00005 | — |
+
+### Architecture
+
+```
+AGENT_RUNTIME=fargate (default):
+  Client → API GW → Lambda → Bridge(:8080) → OpenClaw Gateway(:18789) → Pi Agent
+
+AGENT_RUNTIME=lambda:
+  Client → API GW → Lambda → Lambda Agent Container → runEmbeddedPiAgent() → Anthropic API
+                                ↕ (S3 session sync)
+                                S3
+```
+
+### Deployment Obstacles Resolved
+
+7 deployment issues encountered and resolved during E2E verification. Key learnings:
+- `file://` URL required to bypass Node.js exports map for OpenClaw's `extensionAPI.js`
+- Bedrock discovery disabled (`bedrockDiscovery.enabled: false`) → 54 second savings
+- Docker `--provenance=false` required for Lambda (OCI manifests not supported)
+- ECR pre-created externally, imported via `fromRepositoryName()` in CDK
+
+Full journey: [lambda-migration-journey.md](lambda-migration-journey.md)
+
+### Test Coverage
+
+| Suite | Count |
+|-------|-------|
+| Unit Tests | 233 (30 files) |
+| E2E Tests | 35 (1 file) |
+| **Total** | **268 (all pass)** |
+
+---
+
+## Phase 3: Browser Automation + Custom Skills (Not started)
 
 | Step | Task |
 |------|------|
-| 2-1 | Build Docker image with Chromium |
-| 2-2 | Browser automation skill integration |
-| 2-3 | Custom skill upload/management API |
-| 2-4 | Settings management UI (LLM provider selection, skill management) |
+| 3-1 | Build Docker image with Chromium |
+| 3-2 | Browser automation skill integration |
+| 3-3 | Custom skill upload/management API |
+| 3-4 | Settings management UI (LLM provider selection, skill management) |
 
-## Phase 3: Advanced Features (Not started)
+## Phase 4: Advanced Features (Not started)
 
 | Step | Task |
 |------|------|
-| 3-1 | CloudWatch alerts + cost dashboard |
-| 3-2 | EventBridge-based scheduled task scheduling |
-| 3-3 | Additional messenger support (Discord, Slack) |
+| 4-1 | CloudWatch alerts + cost dashboard |
+| 4-2 | EventBridge-based scheduled task scheduling |
+| 4-3 | Additional messenger support (Discord, Slack) |
 
 ---
 
 ## Key Architecture Decision Records
 
-Recording the major decisions made during Phase 0 and their rationale for future reference.
+Recording the major decisions made during Phases 0-2 and their rationale for future reference.
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Compute | Fargate Spot (Lambda containers not viable) | OpenClaw requires long-running sessions >15 min + WebSocket |
+| Compute (Phase 1) | Fargate Spot | OpenClaw requires long-running sessions >15 min + WebSocket |
+| **Compute (Phase 2)** | **Lambda Container Image** | **Zero fixed costs; OpenClaw `runEmbeddedPiAgent()` runs independently of Gateway WS server** |
 | Network | Public subnet + Public IP | Eliminates NAT Gateway $32/month, compensated by multi-layer defense |
 | Telegram | Webhook-only | API rejects getUpdates when webhook is set |
 | Cold start messages | PendingMessages DDB (5-min TTL) | Lambda stores to DDB, Bridge consumes after startup |
 | Gateway protocol | JSON-RPC 2.0 / MCP over WebSocket | Confirmed via MoltWorker analysis + Perplexity research |
-| Secret management | Secrets Manager → environment variables only | Never written to disk/config files |
-| Bridge security | 6-layer defense | SG, Bearer token, TLS, localhost, non-root, Secrets Manager |
+| Secret management | SSM SecureString → environment variables only | Never written to disk/config files |
+| Bridge security | 6-layer defense | SG, Bearer token, TLS, localhost, non-root, SSM Parameter Store |
+| **Lambda agent import** | **`file://` URL dynamic import** | **Bypasses Node.js exports map for ESM module in CJS context** |
+| **Session concurrency** | **DynamoDB conditional writes** | **15-min TTL lock prevents concurrent session corruption** |
+| **Feature flag** | **`AGENT_RUNTIME` env var** | **fargate (default, backward compat) / lambda / both** |
 | Development methodology | TDD (except UI) | Write tests first then implement, using vitest |
 | Git Hooks | pre-commit: UT + lint, pre-push: E2E | Managed with husky |
 | E2E deployment | Local (.env) + GitHub Actions (OIDC) | AWS profiles via .env, CI uses OIDC auth integration |

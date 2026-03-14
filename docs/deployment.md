@@ -355,28 +355,70 @@ npx cdk destroy --all --profile $AWS_PROFILE
 
 ## 9. Lambda Agent Deployment
 
+### Current Operational Mode: `both`
+
+The project currently runs with `AGENT_RUNTIME=both`, keeping both Lambda (primary) and Fargate (fallback) paths available. This allows gradual migration and instant rollback.
+
+| Mode | Lambda Agent | Fargate | Use Case |
+|------|-------------|---------|----------|
+| `fargate` (default) | Skipped | Active | Original behavior, backward compatible |
+| `lambda` | Active | Skipped | Lambda only, zero fixed cost |
+| **`both`** | **Active (primary)** | **Active (fallback)** | **Current — safe dual operation** |
+
 ### Prerequisites
 
-Set the `AGENT_RUNTIME` environment variable before deploying:
-
 ```bash
-export AGENT_RUNTIME=lambda  # or 'both' for gradual migration
+# Set in .env or export before deploy
+export AGENT_RUNTIME=both
 ```
 
 ### Build and Push Lambda Container Image
 
 ```bash
-cd packages/lambda-agent
-docker build --platform linux/arm64 -t serverless-openclaw-lambda-agent .
-# Tag and push to ECR (LambdaAgentStack creates the repository)
+# From project root (not packages/lambda-agent/)
+# --provenance=false is required (Lambda doesn't support OCI manifests)
+docker build --provenance=false --platform linux/arm64 \
+  -f packages/lambda-agent/Dockerfile \
+  -t {ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com/serverless-openclaw-lambda-agent:latest .
+
+# ECR login + push
+aws ecr get-login-password --profile $AWS_PROFILE --region $AWS_REGION | \
+  docker login --username AWS --password-stdin {ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com
+docker push {ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com/serverless-openclaw-lambda-agent:latest
 ```
+
+Note: The ECR repository (`serverless-openclaw-lambda-agent`) must exist before first deploy. Create it manually or let LambdaAgentStack create it.
 
 ### Deploy
 
 ```bash
 cd packages/cdk
-AGENT_RUNTIME=lambda npx cdk deploy LambdaAgentStack --profile $AWS_PROFILE --region $AWS_REGION
+AGENT_RUNTIME=both npx cdk deploy LambdaAgentStack --exclusively \
+  --profile $AWS_PROFILE --region $AWS_REGION --require-approval never
 ```
+
+### Update Lambda Function (after image rebuild)
+
+```bash
+aws lambda update-function-code \
+  --function-name serverless-openclaw-agent \
+  --image-uri {ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com/serverless-openclaw-lambda-agent:latest \
+  --profile $AWS_PROFILE --region $AWS_REGION
+```
+
+### Switching to Lambda-Only
+
+When confident in Lambda stability (after 1-2 weeks of `both` mode):
+
+```bash
+# 1. Stop any running Fargate tasks
+make task-stop
+
+# 2. Redeploy with lambda-only
+AGENT_RUNTIME=lambda npx cdk deploy --all --profile $AWS_PROFILE --region $AWS_REGION
+```
+
+ComputeStack resources will be skipped. To rollback: set `AGENT_RUNTIME=fargate` and redeploy.
 
 ---
 

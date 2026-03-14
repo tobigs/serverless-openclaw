@@ -44,18 +44,23 @@ TypeScript: ES2022, Node16 module resolution, strict, composite builds. `.js` ex
 
 ```
 packages/
-├── shared/      # Types + constants (TABLE_NAMES, BRIDGE_PORT, key prefixes)
-├── cdk/         # CDK stacks (lib/stacks/)
-├── gateway/     # 7 Lambda handlers (ws-connect/message/disconnect, telegram-webhook, api-handler, watchdog, prewarm)
-├── container/   # Fargate container (Bridge server + OpenClaw JSON-RPC client)
-└── web/         # React SPA (Vite, amazon-cognito-identity-js for auth)
+├── shared/        # Types + constants (TABLE_NAMES, BRIDGE_PORT, key prefixes)
+├── cdk/           # CDK stacks (lib/stacks/)
+├── gateway/       # 7 Lambda handlers (ws-connect/message/disconnect, telegram-webhook, api-handler, watchdog, prewarm)
+├── container/     # Fargate container (Bridge server + OpenClaw JSON-RPC client)
+├── lambda-agent/  # Lambda Container Image (runs OpenClaw runEmbeddedPiAgent() directly)
+└── web/           # React SPA (Vite, amazon-cognito-identity-js for auth)
 ```
 
-**Data Flow:** Client -> API Gateway (WS/REST) -> Lambda -> Bridge(:8080 HTTP) -> OpenClaw Gateway(:18789 WS, JSON-RPC 2.0)
+**Data Flow (Fargate — default):** Client -> API Gateway (WS/REST) -> Lambda -> Bridge(:8080 HTTP) -> OpenClaw Gateway(:18789 WS, JSON-RPC 2.0)
 
-**CDK Stacks:** SecretsStack + NetworkStack -> StorageStack -> {AuthStack, ComputeStack} -> ApiStack -> WebStack + MonitoringStack
+**Data Flow (Lambda — AGENT_RUNTIME=lambda):** Client -> API Gateway -> Lambda -> Lambda Agent Container -> runEmbeddedPiAgent() -> Anthropic API (S3 session sync)
 
-**Cross-stack decoupling:** ComputeStack writes TaskDefinition/Role ARNs to SSM Parameter Store (`packages/cdk/lib/stacks/ssm-params.ts`), ApiStack reads from SSM. No CloudFormation cross-stack exports between Compute and Api.
+**CDK Stacks:** SecretsStack + NetworkStack -> StorageStack -> {AuthStack, ComputeStack, LambdaAgentStack} -> ApiStack -> WebStack + MonitoringStack
+
+**Cross-stack decoupling:** ComputeStack writes TaskDefinition/Role ARNs to SSM Parameter Store (`packages/cdk/lib/stacks/ssm-params.ts`), LambdaAgentStack writes Lambda function ARN to SSM, ApiStack reads from SSM. No CloudFormation cross-stack exports.
+
+**AGENT_RUNTIME feature flag:** `fargate` (default) | `lambda` | `both`. Controls which compute stacks are deployed and which routing path `routeMessage` uses.
 
 ## Critical Constraints
 
@@ -117,6 +122,14 @@ Completed: 1-1 (Project init), 1-2 (NetworkStack + StorageStack), 1-3 (Container
 
 Details: See `docs/progress.md`. Implementation guide: Use `/implement 1-{N}` skill.
 
+## Phase 2 Progress (5/5 — Complete)
+
+Lambda Container Migration: Run OpenClaw directly in Lambda, eliminating $15/month Fargate fixed cost.
+
+Completed: 2-1 (Lambda Container Image + Handler), 2-2 (CDK LambdaAgentStack), 2-3 (Response Streaming Integration), 2-4 (Session Lifecycle Management), 2-5 (Feature Flag + Documentation)
+
+Cold start: 1.35s, Warm: 0.12s (Lambda Duration). Implementation guide: Use `/lambda-migration 2-{N}` skill. Journey: `docs/lambda-migration-journey.md`.
+
 ## Reference Docs
 
 - `docs/architecture.md` — Network, CDK, DynamoDB schema, security model
@@ -126,3 +139,5 @@ Details: See `docs/progress.md`. Implementation guide: Use `/implement 1-{N}` sk
 - `docs/deployment.md` — AWS deployment guide (secrets, build, deploy, verification)
 - `docs/development.md` — Local development guide (environment, TDD, coding rules)
 - `docs/cold-start-optimization.md` — Cold start optimization (Phase 1 complete, Phase 2 in progress)
+- `docs/lambda-migration-plan.md` — Phase 2 Lambda migration plan (architecture, steps, cost analysis)
+- `docs/lambda-migration-journey.md` — Phase 2 migration journey (timeline, obstacles, learnings)
