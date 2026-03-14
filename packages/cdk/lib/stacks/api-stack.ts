@@ -21,6 +21,7 @@ import {
 import { HttpJwtAuthorizer } from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 import { WATCHDOG_INTERVAL_MINUTES } from "@serverless-openclaw/shared";
 import { SSM_PARAMS, SSM_SECRETS } from "./ssm-params.js";
@@ -93,6 +94,7 @@ export class ApiStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
+      logRetention: logs.RetentionDays.ONE_WEEK,
       projectRoot: monorepoRoot,
       depsLockFilePath: path.join(monorepoRoot, "package-lock.json"),
       bundling: bundlingDefaults,

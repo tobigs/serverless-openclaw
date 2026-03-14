@@ -1,4 +1,5 @@
 import type { APIGatewayProxyResultV2 } from "aws-lambda";
+import { timingSafeEqual } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { ECSClient } from "@aws-sdk/client-ecs";
@@ -38,7 +39,10 @@ export async function handler(event: {
   const secretToken = event.headers["x-telegram-bot-api-secret-token"];
   const expectedToken = secrets.get(process.env.SSM_TELEGRAM_SECRET_TOKEN!) ?? "";
 
-  if (!secretToken || secretToken !== expectedToken) {
+  const tokenMatch = secretToken && expectedToken &&
+    secretToken.length === expectedToken.length &&
+    timingSafeEqual(Buffer.from(secretToken), Buffer.from(expectedToken));
+  if (!tokenMatch) {
     return { statusCode: 403, body: JSON.stringify({ error: "Forbidden" }) };
   }
 

@@ -12,6 +12,14 @@ import path from "node:path";
  * S3 layout: s3://{bucket}/sessions/{userId}/{sessionId}.jsonl
  * Local layout: {localBase}/agents/default/sessions/{sessionId}.jsonl
  */
+const SAFE_ID = /^[a-zA-Z0-9_:-]{1,128}$/;
+
+function validateId(value: string, name: string): void {
+  if (!SAFE_ID.test(value)) {
+    throw new Error(`Invalid ${name}: must be 1-128 alphanumeric/dash/underscore/colon characters`);
+  }
+}
+
 export class SessionSync {
   private readonly s3: S3Client;
   private readonly bucket: string;
@@ -88,6 +96,8 @@ export class SessionSync {
   }
 
   private getS3Key(userId: string, sessionId: string): string {
+    validateId(userId, "userId");
+    validateId(sessionId, "sessionId");
     return `sessions/${userId}/${sessionId}.jsonl`;
   }
 }

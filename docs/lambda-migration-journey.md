@@ -7,7 +7,7 @@ This document records the complete journey of migrating OpenClaw from Fargate to
 ## Timeline
 
 ```
-14:03  Start: "OpenClaw을 고쳐서 AWS Lambda에서 동작하도록 할 수 있을지 방법을 찾아줘"
+14:03  Start: "Can we modify OpenClaw to run on AWS Lambda?"
 14:08  Analysis complete: 5 approaches identified, A/E hybrid recommended
 15:20  Decision: Zero-modification approach confirmed
 15:35  Planning: docs, skill, GitHub epic + 5 issues created
@@ -29,7 +29,7 @@ This document records the complete journey of migrating OpenClaw from Fargate to
 
 ### The Question
 
-> "OpenClaw 자체를 고쳐서 AWS Lambda에서 동작하도록 할 수 있을지 방법을 찾아줘"
+> "Can we actually modify OpenClaw itself to run on AWS Lambda?"
 
 ### Key Discoveries
 

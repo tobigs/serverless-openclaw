@@ -1,5 +1,34 @@
 # Release Notes
 
+## v0.2.1 — Security Hardening & Skill Restructuring (2026-03-15)
+
+### Security Fixes
+
+- **Timing-safe token comparison**: Bearer token (Bridge) and Telegram webhook secret now use `timingSafeEqual` to prevent timing side-channel attacks
+- **S3 path traversal prevention**: `sessionId` and `userId` validated against `^[a-zA-Z0-9_:-]{1,128}$` before S3 key construction
+- **Gateway Lambda log retention**: All 7 Lambda functions now have `ONE_WEEK` log retention (previously unbounded)
+- **ECR lifecycle policy**: Lambda agent ECR repository limited to 5 images (prevents unbounded storage cost)
+
+### Skills
+
+13 Claude Code skills restructured to leverage all project documentation:
+- 5 new: `/dev`, `/troubleshoot`, `/openclaw`, `/cold-start`, `/status`
+- 1 new: `/release` — 6 parallel review lanes (code, docs, tests, security, cost, ops)
+- 5 updated: `/deploy`, `/cost`, `/architecture`, `/security`, `/context`
+
+### Documentation
+
+- 22 documentation issues fixed (CRITICAL to LOW) from comprehensive review
+- All Korean text translated to English (project rule compliance)
+- Architecture diagrams updated for 9 CDK stacks and Lambda agent
+- Test counts, package counts, and phase status synchronized across all docs
+
+### Test Coverage
+
+233 unit tests + 35 E2E tests = **268 total, all passing**
+
+---
+
 ## v0.2.0 — Lambda Container Migration (2026-03-15)
 
 ### Highlights

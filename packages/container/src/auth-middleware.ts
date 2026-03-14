@@ -1,4 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
+import { timingSafeEqual } from "node:crypto";
+
+function safeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 export function createAuthMiddleware(
   authToken: string,
@@ -16,7 +22,7 @@ export function createAuthMiddleware(
     }
 
     const token = header.slice(7);
-    if (!token || token !== authToken) {
+    if (!token || !safeCompare(token, authToken)) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
