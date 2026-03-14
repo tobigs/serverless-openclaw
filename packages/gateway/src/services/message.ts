@@ -15,6 +15,7 @@ import type {
 import type { LambdaAgentResponse } from "@serverless-openclaw/shared";
 import type { StartTaskParams } from "./container.js";
 import type { InvokeLambdaAgentParams } from "./lambda-agent.js";
+import { classifyRoute, stripRouteHint } from "./route-classifier.js";
 
 type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status: number; statusText: string }>;
 type Send = (command: unknown) => Promise<unknown>;
@@ -67,7 +68,7 @@ export interface RouteDeps {
   deleteTaskState: (userId: string) => Promise<void>;
   startTaskParams: StartTaskParams;
   /** Lambda agent runtime support (Phase 2) */
-  agentRuntime?: "lambda" | "fargate";
+  agentRuntime?: "lambda" | "fargate" | "both";
   invokeLambdaAgent?: (params: InvokeLambdaAgentParams) => Promise<LambdaAgentResponse>;
   lambdaAgentFunctionArn?: string;
   sessionId?: string;
@@ -75,30 +76,7 @@ export interface RouteDeps {
 
 export type RouteResult = "sent" | "queued" | "started" | "lambda";
 
-export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
-  // Phase 2: Lambda agent path
-  if (
-    deps.agentRuntime === "lambda" &&
-    deps.invokeLambdaAgent &&
-    deps.lambdaAgentFunctionArn
-  ) {
-    const response = await deps.invokeLambdaAgent({
-      functionArn: deps.lambdaAgentFunctionArn,
-      userId: deps.userId,
-      sessionId: deps.sessionId ?? `session-${deps.userId}`,
-      message: deps.message,
-      channel: deps.channel,
-      connectionId: deps.connectionId,
-    });
-    if (!response.success) {
-      throw new Error(response.error ?? "Lambda agent failed");
-    }
-    return "lambda";
-  }
-
-  // Fargate path (default)
-  const taskState = await deps.getTaskState(deps.userId);
-
+async function routeFargate(deps: RouteDeps, taskState: TaskStateItem | null): Promise<RouteResult> {
   if (taskState?.status === "Running" && taskState.publicIp) {
     try {
       await sendToBridge(deps.fetchFn, taskState.publicIp, deps.bridgeAuthToken, {
@@ -173,4 +151,67 @@ export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
   }
 
   return "queued";
+}
+
+export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
+  // Phase 2: Lambda agent path
+  if (
+    deps.agentRuntime === "lambda" &&
+    deps.invokeLambdaAgent &&
+    deps.lambdaAgentFunctionArn
+  ) {
+    const response = await deps.invokeLambdaAgent({
+      functionArn: deps.lambdaAgentFunctionArn,
+      userId: deps.userId,
+      sessionId: deps.sessionId ?? `session-${deps.userId}`,
+      message: deps.message,
+      channel: deps.channel,
+      connectionId: deps.connectionId,
+    });
+    if (!response.success) {
+      throw new Error(response.error ?? "Lambda agent failed");
+    }
+    return "lambda";
+  }
+
+  // Smart routing: when agentRuntime=both, classify based on task state and message hints
+  if (
+    deps.agentRuntime === "both" &&
+    deps.invokeLambdaAgent &&
+    deps.lambdaAgentFunctionArn
+  ) {
+    const taskState = await deps.getTaskState(deps.userId);
+    const decision = classifyRoute({ message: deps.message, taskState });
+
+    if (decision === "fargate-reuse") {
+      // Fall through to Fargate path below with the already-fetched taskState
+      return routeFargate(deps, taskState);
+    }
+
+    if (decision === "fargate-new") {
+      // Strip hint and queue to Fargate (new container)
+      const strippedDeps = { ...deps, message: stripRouteHint(deps.message) };
+      return routeFargate(strippedDeps, taskState);
+    }
+
+    // decision === "lambda": try Lambda, fall back to Fargate on failure
+    const response = await deps.invokeLambdaAgent({
+      functionArn: deps.lambdaAgentFunctionArn,
+      userId: deps.userId,
+      sessionId: deps.sessionId ?? `session-${deps.userId}`,
+      message: deps.message,
+      channel: deps.channel,
+      connectionId: deps.connectionId,
+    });
+    if (response.success) {
+      return "lambda";
+    }
+    // Lambda failed — fall back to Fargate
+    console.warn("Lambda agent failed, falling back to Fargate:", response.error);
+    return routeFargate(deps, taskState);
+  }
+
+  // Fargate path (default)
+  const taskState = await deps.getTaskState(deps.userId);
+  return routeFargate(deps, taskState);
 }

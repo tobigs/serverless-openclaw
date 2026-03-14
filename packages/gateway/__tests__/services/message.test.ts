@@ -422,5 +422,85 @@ describe("message service", () => {
       expect(result).toBe("started");
       expect(deps.startTask).toHaveBeenCalled();
     });
+
+    it("should reuse Fargate when AGENT_RUNTIME=both and container is Running", async () => {
+      const mockInvokeLambda = vi.fn();
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        getTaskState: vi.fn().mockResolvedValue({
+          PK: "USER#user-123",
+          status: "Running",
+          publicIp: "1.2.3.4",
+          taskArn: "arn:task",
+          startedAt: "2024-01-01T00:00:00Z",
+          lastActivity: "2024-01-01T00:00:00Z",
+        }),
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("sent");
+      expect(mockFetch).toHaveBeenCalled();
+      expect(mockInvokeLambda).not.toHaveBeenCalled();
+    });
+
+    it("should use Lambda when AGENT_RUNTIME=both and no Fargate running", async () => {
+      const mockInvokeLambda = vi.fn().mockResolvedValue({
+        success: true,
+        payloads: [{ text: "Lambda response" }],
+      });
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        getTaskState: vi.fn().mockResolvedValue(null),
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("lambda");
+      expect(mockInvokeLambda).toHaveBeenCalled();
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(deps.startTask).not.toHaveBeenCalled();
+    });
+
+    it("should start Fargate when AGENT_RUNTIME=both and message has /heavy hint", async () => {
+      const mockInvokeLambda = vi.fn();
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        message: "/heavy do something",
+        getTaskState: vi.fn().mockResolvedValue(null),
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("started");
+      expect(mockInvokeLambda).not.toHaveBeenCalled();
+      expect(deps.startTask).toHaveBeenCalled();
+      expect(deps.savePendingMessage).toHaveBeenCalled();
+    });
+
+    it("should fallback to Fargate when AGENT_RUNTIME=both and Lambda fails", async () => {
+      const mockInvokeLambda = vi.fn().mockResolvedValue({
+        success: false,
+        error: "Lambda timeout",
+      });
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        getTaskState: vi.fn().mockResolvedValue(null),
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("started");
+      expect(mockInvokeLambda).toHaveBeenCalled();
+      expect(deps.startTask).toHaveBeenCalled();
+    });
   });
 });

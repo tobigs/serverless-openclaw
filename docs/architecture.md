@@ -1065,3 +1065,14 @@ Client → API Gateway (WS/HTTP) → Lambda → Lambda Agent Container → Anthr
 | `fargate` | Yes | No | Yes (backward compatible) |
 | `lambda` | No | Yes | |
 | `both` | Yes | Yes | |
+
+### Smart Routing (AGENT_RUNTIME=both)
+
+When `AGENT_RUNTIME=both`, `routeMessage` uses `classifyRoute()` to dynamically choose the optimal runtime:
+
+| Priority | Condition | Route | Reason |
+|----------|-----------|-------|--------|
+| 1 | Fargate container Running | Fargate | Reuse (already paid for) |
+| 2 | Message starts with `/heavy` or `/fargate` | Fargate | User explicit request |
+| 3 | Default | Lambda | Fast (1.35s), cheap ($0) |
+| 4 | Lambda fails | Fargate (fallback) | Auto-retry with full runtime |

@@ -365,7 +365,7 @@ The project currently runs with `AGENT_RUNTIME=both`, keeping both Lambda (prima
 |------|-------------|---------|----------|
 | `fargate` (default) | Skipped | Active | Original behavior, backward compatible |
 | `lambda` | Active | Skipped | Lambda only, zero fixed cost |
-| **`both`** | **Active (primary)** | **Active (fallback)** | **Current — safe dual operation** |
+| **`both`** | **Active (smart routing)** | **Active (reuse/fallback)** | **Current — smart routing based on task** |
 
 ### Prerequisites
 

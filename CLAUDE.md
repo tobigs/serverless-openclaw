@@ -60,7 +60,7 @@ packages/
 
 **Cross-stack decoupling:** ComputeStack writes TaskDefinition/Role ARNs to SSM Parameter Store (`packages/cdk/lib/stacks/ssm-params.ts`), LambdaAgentStack writes Lambda function ARN to SSM, ApiStack reads from SSM. No CloudFormation cross-stack exports.
 
-**AGENT_RUNTIME feature flag:** `fargate` (default) | `lambda` | `both`. Controls which compute stacks are deployed and which routing path `routeMessage` uses.
+**AGENT_RUNTIME feature flag:** `fargate` (default) | `lambda` | `both`. Controls which compute stacks are deployed and which routing path `routeMessage` uses. When `both`: Smart routing via `classifyRoute()` — Lambda default, Fargate reuse when running, `/heavy`/`/fargate` hint for Fargate, Lambda failure fallback to Fargate.
 
 ## Critical Constraints
 

@@ -1,5 +1,24 @@
 # Release Notes
 
+## v0.3.0 — Smart Routing (2026-03-15)
+
+### Highlights
+
+When `AGENT_RUNTIME=both`, the system now intelligently routes messages to Lambda or Fargate based on task characteristics — reusing running Fargate containers, honoring user hints (`/heavy`, `/fargate`), and automatically falling back to Fargate when Lambda fails.
+
+### New Features
+
+- **Smart routing** (`route-classifier.ts`): Dynamic Lambda/Fargate selection based on task state and message hints
+- **Fargate reuse**: Running containers are reused instead of wasting them by routing to Lambda
+- **User hints**: `/heavy` and `/fargate` message prefixes explicitly request Fargate runtime
+- **Lambda fallback**: Automatic Fargate retry when Lambda invocation fails
+
+### Test Coverage
+
+248 unit tests + 35 E2E tests = **283 total, all passing**
+
+---
+
 ## v0.2.1 — Security Hardening & Skill Restructuring (2026-03-15)
 
 ### Security Fixes

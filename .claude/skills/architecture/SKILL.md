@@ -28,9 +28,9 @@ Controls which agent backend handles requests:
 |-------|---------|
 | `fargate` | Route all agent requests to Fargate container (Phase 1 mode) |
 | `lambda` | Route all agent requests to Lambda agent (Phase 2 mode) |
-| `both` | Fargate for long sessions, Lambda for quick queries (current default) |
+| `both` | Smart routing via `classifyRoute()`: reuse running Fargate, honor `/heavy`/`/fargate` hints, default to Lambda, fallback to Fargate on Lambda failure |
 
-See [architecture.md §12](../../../docs/architecture.md) for full Lambda architecture details.
+See [architecture.md §12](../../../docs/architecture.md) for full Lambda architecture details and smart routing rules.
 
 ## Lambda Data Flow (Phase 2)
 
