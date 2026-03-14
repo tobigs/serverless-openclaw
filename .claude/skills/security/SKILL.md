@@ -42,3 +42,15 @@ Authentication, Bridge defense, IDOR prevention, secret management, IAM roles:
 - [ ] Fargate: access only to S3 data bucket
 - [ ] ECS permissions: Condition restricted to specific cluster
 - [ ] PassRole: only task-role and exec-role allowed
+
+### Lambda Agent (Phase 2)
+
+See [architecture.md §security](../../../docs/architecture.md) for full Lambda security details.
+
+- [ ] Lambda IAM least privilege: `S3:GetObject/PutObject` on `sessions/*` prefix only
+- [ ] Lambda IAM: `SSM:GetParameter` on `secrets/*` prefix only (no wildcard)
+- [ ] Lambda IAM: `DynamoDB:GetItem/PutItem/DeleteItem` on TaskState table only
+- [ ] Lambda IAM: `cloudwatch:PutMetricData` for custom metrics (namespace-restricted)
+- [ ] `SessionLock` prevents concurrent Lambda invocations accessing same session
+- [ ] No secrets on disk: `HOME=/tmp`, env vars only (never write API keys to files)
+- [ ] Lambda container: non-root user, read-only root filesystem where possible

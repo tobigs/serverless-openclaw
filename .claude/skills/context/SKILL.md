@@ -13,9 +13,21 @@ This skill provides core project context. It is automatically referenced during 
 See [PRD.md](../../../docs/PRD.md) for details:
 - Project definition, goals, tech stack
 - 7 key architecture decisions with rationale
-- Monorepo structure (packages/cdk, gateway, container, web, shared)
+- Monorepo structure (6 packages: cdk, gateway, container, lambda, web, shared)
 - DynamoDB 5-table schema
 - Core data flows
+
+## Phase Status
+
+| Phase | Status |
+|-------|--------|
+| Phase 0 (docs + setup) | Complete |
+| Phase 1 (MVP — Fargate + Web + Telegram) | Complete (10/10) |
+| Phase 2 (Lambda agent migration) | Complete |
+
+**AGENT_RUNTIME feature flag**: `fargate` | `lambda` | `both` (current default)
+
+**Test coverage**: 233 unit tests + 35 E2E tests = **268 total**
 
 ## Critical Constraints (Must Follow During Implementation)
 

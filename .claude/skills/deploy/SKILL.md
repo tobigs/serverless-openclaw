@@ -63,6 +63,30 @@ Use `--exclusively` flag to skip dependency resolution when needed.
 ./scripts/deploy-image.sh --soci   # with SOCI lazy loading (Linux only)
 ```
 
+### `lambda-image` — Build + Push Lambda Container Image
+
+```bash
+./scripts/deploy-lambda-image.sh   # build + push Lambda container image to ECR
+```
+
+### `lambda-stack` — Deploy LambdaAgentStack
+
+```bash
+cd packages/cdk
+npx cdk deploy LambdaAgentStack --profile $AWS_PROFILE --region $AWS_REGION --require-approval never
+```
+
+### `lambda-update` — Update Lambda Function Code (after image rebuild)
+
+```bash
+aws lambda update-function-code \
+  --function-name serverless-openclaw-agent \
+  --image-uri $ECR_REPO:latest \
+  --profile $AWS_PROFILE --region $AWS_REGION
+```
+
+See [Deployment Guide §9](../../../docs/deployment.md) for full Lambda deployment walkthrough.
+
 ## Post-Deployment
 
 - Register Telegram webhook: `./scripts/setup-telegram-webhook.sh`

@@ -31,3 +31,16 @@ Verify the following resources are **NOT created**:
 | Within Free Tier | ~$0.23/month |
 | After Free Tier | ~$1.07/month |
 | Maximum allowed | Under $10/month |
+
+## Lambda Agent Cost (Phase 2)
+
+See [cost-optimization.md §9](../../../docs/cost-optimization.md) for full Lambda cost analysis.
+
+| Resource | Cost Model | Notes |
+|----------|-----------|-------|
+| Lambda invocations | Per-request | 1M requests/month free tier |
+| Lambda duration | Per GB-second | 400K GB-seconds/month free tier |
+| Lambda container image | ECR storage | ~$0.10/GB/month after 500MB free |
+| No Fargate idle cost | — | Lambda scales to zero automatically |
+
+**Key advantage**: Lambda charges only for actual execution time — no idle Fargate cost when no users are active. For low-traffic usage, Lambda runtime cost approaches $0/month within free tier.

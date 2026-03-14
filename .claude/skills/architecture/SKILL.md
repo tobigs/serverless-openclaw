@@ -16,6 +16,30 @@ allowed-tools: Read, Glob, Grep
 
 1. **Cost minimization**: No NAT Gateway, no ALB, no Interface Endpoints
 2. **Serverless-first**: Lambda (events), Fargate Spot (long-running), DynamoDB (PAY_PER_REQUEST)
-3. **Single responsibility**: 6 separate Lambdas, 6 separate CDK stacks
+3. **Single responsibility**: 7 separate Lambdas, 9 separate CDK stacks
 4. **Layer separation**: API Gateway → Lambda → Bridge → OpenClaw Gateway
 5. **Protocol translation**: Lambda(HTTP) ↔ Bridge ↔ OpenClaw Gateway(JSON-RPC 2.0 WebSocket)
+
+## AGENT_RUNTIME Feature Flag
+
+Controls which agent backend handles requests:
+
+| Value | Behavior |
+|-------|---------|
+| `fargate` | Route all agent requests to Fargate container (Phase 1 mode) |
+| `lambda` | Route all agent requests to Lambda agent (Phase 2 mode) |
+| `both` | Fargate for long sessions, Lambda for quick queries (current default) |
+
+See [architecture.md §12](../../../docs/architecture.md) for full Lambda architecture details.
+
+## Lambda Data Flow (Phase 2)
+
+```
+Client → API Gateway (WS/REST) → Gateway Lambda → Lambda Agent Function
+                                                  → runEmbeddedPiAgent()
+                                                  → OpenClaw in-process
+```
+
+## CDK Stacks (9 total)
+
+SecretsStack + NetworkStack → StorageStack → {AuthStack, ComputeStack} → ApiStack → WebStack + MonitoringStack + **LambdaAgentStack**
