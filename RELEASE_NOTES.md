@@ -1,5 +1,33 @@
 # Release Notes
 
+## v0.3.1 — Session Continuity (2026-03-15)
+
+### Highlights
+
+Unified session storage ensures conversation context is preserved when smart routing switches between Lambda and Fargate. Previously each runtime used different S3 paths, causing the bot to "forget" previous conversations after a routing transition.
+
+### Fixes
+
+- **Unified S3 session path**: Both Lambda and Fargate now read/write sessions to `sessions/{userId}/agents/default/sessions/{sessionId}.jsonl`
+- **Fargate session sync**: `LifecycleManager` backs up and restores OpenClaw sessions to/from the shared S3 path
+- **Shared constants**: `SESSION_S3_PREFIX`, `SESSION_DEFAULT_AGENT` in `@serverless-openclaw/shared`
+
+### Integration Tests (11 new, 7 patterns)
+
+- Lambda → Lambda (2 and 3 consecutive invocations)
+- Fargate → Lambda transition
+- Lambda → Fargate transition
+- Mixed: Lambda → Fargate → Lambda
+- Mixed: Fargate → Lambda → Fargate
+- New session creation
+- User isolation (separate users don't share sessions)
+
+### Test Coverage
+
+259 unit tests + 35 E2E tests = **294 total, all passing**
+
+---
+
 ## v0.3.0 — Smart Routing (2026-03-15)
 
 ### Highlights
