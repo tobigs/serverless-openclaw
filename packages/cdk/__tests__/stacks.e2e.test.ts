@@ -212,10 +212,18 @@ describe("CDK Stacks E2E — synth all stacks", () => {
   // ── ApiStack ──
 
   describe("ApiStack", () => {
-    it("7+ Lambda functions (including prewarm + log retention custom resources)", () => {
-      // 7 handler functions + 1 custom resource for log retention
+    it("7 Lambda functions", () => {
       const functions = apiTemplate.findResources("AWS::Lambda::Function");
-      expect(Object.keys(functions).length).toBeGreaterThanOrEqual(7);
+      expect(Object.keys(functions).length).toBe(7);
+    });
+
+    it("7 CloudWatch log groups with ONE_WEEK retention", () => {
+      const logGroups = apiTemplate.findResources("AWS::Logs::LogGroup");
+      expect(Object.keys(logGroups).length).toBe(7);
+      for (const [, lg] of Object.entries(logGroups)) {
+        const props = (lg as Record<string, unknown>).Properties as Record<string, unknown>;
+        expect(props).toHaveProperty("RetentionInDays", 7);
+      }
     });
 
     it("WebSocket API", () => {
@@ -236,10 +244,8 @@ describe("CDK Stacks E2E — synth all stacks", () => {
 
     it("Handler Lambda functions use ARM64", () => {
       const functions = apiTemplate.findResources("AWS::Lambda::Function");
-      for (const [id, fn] of Object.entries(functions)) {
+      for (const [, fn] of Object.entries(functions)) {
         const props = (fn as Record<string, unknown>).Properties as Record<string, unknown>;
-        // Skip log retention custom resource Lambda (managed by CDK)
-        if (id.includes("LogRetention")) continue;
         expect(props).toHaveProperty("Architectures", ["arm64"]);
       }
     });
