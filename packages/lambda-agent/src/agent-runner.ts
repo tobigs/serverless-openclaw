@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { mapModelId, resolveProvider } from "@serverless-openclaw/shared";
 
 // Cache the OpenClaw module across invocations (warm start optimization)
 let cachedRunEmbeddedPiAgent: ((params: Record<string, unknown>) => Promise<unknown>) | null = null;
@@ -56,14 +57,17 @@ interface AgentResult {
  */
 export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   const runEmbeddedPiAgent = await loadRunEmbeddedPiAgent();
+  const provider = resolveProvider();
+  const rawModel = params.model ?? "claude-sonnet-4-20250514";
+  const model = provider === "bedrock" ? mapModelId(rawModel) : rawModel;
 
   const result = await runEmbeddedPiAgent({
     sessionId: params.sessionId,
     sessionFile: params.sessionFile,
     workspaceDir: params.workspaceDir,
     prompt: params.message,
-    provider: "anthropic",
-    model: params.model ?? "claude-sonnet-4-20250514",
+    provider,
+    model,
     disableTools: params.disableTools ?? false,
     messageChannel: params.channel === "telegram" ? "telegram" : "webchat",
     senderIsOwner: true,

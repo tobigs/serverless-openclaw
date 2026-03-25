@@ -110,4 +110,60 @@ describe("patchConfig", () => {
     );
     expect(written.gateway.port).toBe(18789);
   });
+
+  describe("Bedrock provider support", () => {
+    it("should set bedrockDiscovery.enabled to true and remove llm.apiKey when provider is bedrock", () => {
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+      mockedFs.writeFileSync.mockImplementation(() => {});
+
+      patchConfig("/path/to/openclaw.json", { provider: "bedrock" });
+
+      const written = JSON.parse(
+        mockedFs.writeFileSync.mock.calls[0][1] as string,
+      );
+      expect(written.models.bedrockDiscovery.enabled).toBe(true);
+      expect(written.llm.apiKey).toBeUndefined();
+    });
+
+    it("should not set bedrockDiscovery when provider is anthropic", () => {
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+      mockedFs.writeFileSync.mockImplementation(() => {});
+
+      patchConfig("/path/to/openclaw.json", { provider: "anthropic" });
+
+      const written = JSON.parse(
+        mockedFs.writeFileSync.mock.calls[0][1] as string,
+      );
+      expect(written.models).toBeUndefined();
+    });
+
+    it("should not set bedrockDiscovery when provider is not specified", () => {
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+      mockedFs.writeFileSync.mockImplementation(() => {});
+
+      patchConfig("/path/to/openclaw.json");
+
+      const written = JSON.parse(
+        mockedFs.writeFileSync.mock.calls[0][1] as string,
+      );
+      expect(written.models).toBeUndefined();
+    });
+
+    it("should preserve existing models config when adding bedrockDiscovery", () => {
+      const configWithModels = {
+        ...BASE_CONFIG,
+        models: { someOtherSetting: "value" },
+      };
+      mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithModels));
+      mockedFs.writeFileSync.mockImplementation(() => {});
+
+      patchConfig("/path/to/openclaw.json", { provider: "bedrock" });
+
+      const written = JSON.parse(
+        mockedFs.writeFileSync.mock.calls[0][1] as string,
+      );
+      expect(written.models.bedrockDiscovery.enabled).toBe(true);
+      expect(written.models.someOtherSetting).toBe("value");
+    });
+  });
 });

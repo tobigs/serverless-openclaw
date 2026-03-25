@@ -94,4 +94,67 @@ describe("config-init", () => {
       path.join(tmpDir, ".openclaw", "agents", "default", "sessions"),
     );
   });
+
+  describe("Bedrock provider support", () => {
+    function readConfig(): Record<string, unknown> {
+      const configPath = path.join(tmpDir, ".openclaw", "openclaw.json");
+      return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    }
+
+    it("should write bedrockDiscovery.enabled: true for bedrock provider", async () => {
+      await initConfig({ provider: "bedrock" });
+
+      const config = readConfig();
+      const models = config.models as Record<string, unknown>;
+      const discovery = models.bedrockDiscovery as Record<string, unknown>;
+      expect(discovery.enabled).toBe(true);
+    });
+
+    it("should write bedrockDiscovery.enabled: false for anthropic provider", async () => {
+      await initConfig({ provider: "anthropic" });
+
+      const config = readConfig();
+      const models = config.models as Record<string, unknown>;
+      const discovery = models.bedrockDiscovery as Record<string, unknown>;
+      expect(discovery.enabled).toBe(false);
+    });
+
+    it("should write bedrockDiscovery.region when bedrock provider has region", async () => {
+      await initConfig({ provider: "bedrock", bedrockRegion: "us-west-2" });
+
+      const config = readConfig();
+      const models = config.models as Record<string, unknown>;
+      const discovery = models.bedrockDiscovery as Record<string, unknown>;
+      expect(discovery.enabled).toBe(true);
+      expect(discovery.region).toBe("us-west-2");
+    });
+
+    it("should omit bedrockDiscovery.region when bedrock provider has no region", async () => {
+      await initConfig({ provider: "bedrock" });
+
+      const config = readConfig();
+      const models = config.models as Record<string, unknown>;
+      const discovery = models.bedrockDiscovery as Record<string, unknown>;
+      expect(discovery.enabled).toBe(true);
+      expect(discovery.region).toBeUndefined();
+    });
+
+    it("should not set ANTHROPIC_API_KEY env var for bedrock provider", async () => {
+      const originalKey = process.env.ANTHROPIC_API_KEY;
+      try {
+        delete process.env.ANTHROPIC_API_KEY;
+        await initConfig({
+          provider: "bedrock",
+          anthropicApiKey: "should-not-be-set",
+        });
+        expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+      } finally {
+        if (originalKey) {
+          process.env.ANTHROPIC_API_KEY = originalKey;
+        } else {
+          delete process.env.ANTHROPIC_API_KEY;
+        }
+      }
+    });
+  });
 });

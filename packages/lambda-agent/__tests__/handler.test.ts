@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { LambdaAgentEvent, LambdaAgentResponse } from "../src/types.js";
 
 // Use vi.hoisted to ensure mock references are stable across vi.resetModules()
-const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAgent, mockAcquire, mockRelease } = vi.hoisted(() => ({
+const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAgent, mockAcquire, mockRelease, mockResolveProvider } = vi.hoisted(() => ({
   mockInitConfig: vi.fn().mockResolvedValue({
     configDir: "/tmp/.openclaw",
     sessionsDir: "/tmp/.openclaw/agents/default/sessions",
@@ -15,6 +15,7 @@ const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAge
   mockRunAgent: vi.fn(),
   mockAcquire: vi.fn().mockResolvedValue(true),
   mockRelease: vi.fn().mockResolvedValue(undefined),
+  mockResolveProvider: vi.fn().mockReturnValue("anthropic" as const),
 }));
 
 vi.mock("../src/config-init.js", () => ({
@@ -44,6 +45,10 @@ vi.mock("../src/session-lock.js", () => ({
   })),
 }));
 
+vi.mock("@serverless-openclaw/shared", () => ({
+  resolveProvider: (...args: unknown[]) => mockResolveProvider(...args),
+}));
+
 describe("handler", () => {
   let originalBucket: string | undefined;
 
@@ -56,6 +61,8 @@ describe("handler", () => {
     mockRunAgent.mockClear();
     mockAcquire.mockClear();
     mockRelease.mockClear();
+    mockResolveProvider.mockClear();
+    mockResolveProvider.mockReturnValue("anthropic" as const);
 
     // Set required env var
     originalBucket = process.env.SESSION_BUCKET;
@@ -183,5 +190,65 @@ describe("handler", () => {
         disableTools: true,
       }),
     );
+  });
+
+  describe("Bedrock provider", () => {
+    beforeEach(() => {
+      mockResolveProvider.mockReturnValue("bedrock" as const);
+      process.env.BEDROCK_REGION = "us-west-2";
+    });
+
+    afterEach(() => {
+      delete process.env.BEDROCK_REGION;
+    });
+
+    it("should skip SSM API key resolution when provider is bedrock", async () => {
+      const handler = await loadHandler();
+      await handler(createEvent());
+
+      expect(mockResolveSecrets).not.toHaveBeenCalled();
+    });
+
+    it("should call initConfig with bedrock provider and region", async () => {
+      const handler = await loadHandler();
+      await handler(createEvent());
+
+      expect(mockInitConfig).toHaveBeenCalledWith({
+        provider: "bedrock",
+        bedrockRegion: "us-west-2",
+      });
+    });
+
+    it("should pass undefined bedrockRegion when BEDROCK_REGION is unset", async () => {
+      delete process.env.BEDROCK_REGION;
+      const handler = await loadHandler();
+      await handler(createEvent());
+
+      expect(mockInitConfig).toHaveBeenCalledWith({
+        provider: "bedrock",
+        bedrockRegion: undefined,
+      });
+    });
+  });
+
+  describe("Anthropic provider (backward compatibility)", () => {
+    it("should resolve API key from SSM when provider is anthropic", async () => {
+      mockResolveProvider.mockReturnValue("anthropic" as const);
+      const handler = await loadHandler();
+      await handler(createEvent());
+
+      expect(mockResolveSecrets).toHaveBeenCalled();
+    });
+
+    it("should call initConfig with anthropic provider and API key", async () => {
+      mockResolveProvider.mockReturnValue("anthropic" as const);
+      const handler = await loadHandler();
+      await handler(createEvent());
+
+      expect(mockInitConfig).toHaveBeenCalledWith({
+        anthropicApiKey: "test-api-key",
+        provider: "anthropic",
+      });
+    });
   });
 });

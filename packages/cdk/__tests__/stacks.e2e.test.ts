@@ -207,6 +207,51 @@ describe("CDK Stacks E2E — synth all stacks", () => {
     it("CloudWatch Log Group", () => {
       computeTemplate.resourceCountIs("AWS::Logs::LogGroup", 1);
     });
+
+    it("Fargate container has LLM_PROVIDER env var", () => {
+      const taskDefs = computeTemplate.findResources("AWS::ECS::TaskDefinition");
+      const taskDef = Object.values(taskDefs)[0] as Record<string, unknown>;
+      const props = taskDef.Properties as Record<string, unknown>;
+      const containers = props.ContainerDefinitions as Record<string, unknown>[];
+      const container = containers[0];
+      const envVars = container.Environment as { Name: string; Value: string }[];
+      const llmProvider = envVars.find((e) => e.Name === "LLM_PROVIDER");
+      expect(llmProvider).toBeDefined();
+    });
+
+    it("Fargate task role has bedrock:InvokeModel IAM permission", () => {
+      const policies = computeTemplate.findResources("AWS::IAM::Policy");
+      const statements = Object.values(policies).flatMap((policy) => {
+        const props = (policy as Record<string, unknown>).Properties as Record<string, unknown>;
+        const doc = props.PolicyDocument as Record<string, unknown>;
+        return (doc.Statement as Record<string, unknown>[]) ?? [];
+      });
+      const bedrockStatement = statements.find((s) => {
+        const actions = s.Action as string | string[];
+        return Array.isArray(actions)
+          ? actions.includes("bedrock:InvokeModel")
+          : actions === "bedrock:InvokeModel";
+      });
+      expect(bedrockStatement).toBeDefined();
+    });
+
+    it("Bedrock IAM permission scoped to anthropic.* foundation models (Fargate)", () => {
+      const policies = computeTemplate.findResources("AWS::IAM::Policy");
+      const statements = Object.values(policies).flatMap((policy) => {
+        const props = (policy as Record<string, unknown>).Properties as Record<string, unknown>;
+        const doc = props.PolicyDocument as Record<string, unknown>;
+        return (doc.Statement as Record<string, unknown>[]) ?? [];
+      });
+      const bedrockStatement = statements.find((s) => {
+        const actions = s.Action as string | string[];
+        return Array.isArray(actions)
+          ? actions.includes("bedrock:InvokeModel")
+          : actions === "bedrock:InvokeModel";
+      });
+      expect(bedrockStatement).toBeDefined();
+      const resource = bedrockStatement!.Resource as string;
+      expect(resource).toBe("arn:aws:bedrock:*::foundation-model/anthropic.*");
+    });
   });
 
   // ── ApiStack ──
@@ -305,6 +350,47 @@ describe("CDK Stacks E2E — synth all stacks", () => {
       expect(env.SESSION_BUCKET).toBeDefined();
     });
 
+    it("Lambda has LLM_PROVIDER env var", () => {
+      const functions = lambdaAgentTemplate.findResources("AWS::Lambda::Function");
+      const fn = Object.values(functions)[0] as Record<string, unknown>;
+      const env = ((fn.Properties as Record<string, unknown>).Environment as Record<string, unknown>).Variables as Record<string, unknown>;
+      expect(env.LLM_PROVIDER).toBeDefined();
+    });
+
+    it("Lambda function has bedrock:InvokeModel IAM permission", () => {
+      const policies = lambdaAgentTemplate.findResources("AWS::IAM::Policy");
+      const statements = Object.values(policies).flatMap((policy) => {
+        const props = (policy as Record<string, unknown>).Properties as Record<string, unknown>;
+        const doc = props.PolicyDocument as Record<string, unknown>;
+        return (doc.Statement as Record<string, unknown>[]) ?? [];
+      });
+      const bedrockStatement = statements.find((s) => {
+        const actions = s.Action as string | string[];
+        return Array.isArray(actions)
+          ? actions.includes("bedrock:InvokeModel")
+          : actions === "bedrock:InvokeModel";
+      });
+      expect(bedrockStatement).toBeDefined();
+    });
+
+    it("Bedrock IAM permission scoped to anthropic.* foundation models (Lambda)", () => {
+      const policies = lambdaAgentTemplate.findResources("AWS::IAM::Policy");
+      const statements = Object.values(policies).flatMap((policy) => {
+        const props = (policy as Record<string, unknown>).Properties as Record<string, unknown>;
+        const doc = props.PolicyDocument as Record<string, unknown>;
+        return (doc.Statement as Record<string, unknown>[]) ?? [];
+      });
+      const bedrockStatement = statements.find((s) => {
+        const actions = s.Action as string | string[];
+        return Array.isArray(actions)
+          ? actions.includes("bedrock:InvokeModel")
+          : actions === "bedrock:InvokeModel";
+      });
+      expect(bedrockStatement).toBeDefined();
+      const resource = bedrockStatement!.Resource as string;
+      expect(resource).toBe("arn:aws:bedrock:*::foundation-model/anthropic.*");
+    });
+
     it("no ECR repository (imported externally via fromRepositoryName)", () => {
       lambdaAgentTemplate.resourceCountIs("AWS::ECR::Repository", 0);
     });
@@ -382,6 +468,141 @@ describe("ApiStack with PREWARM_SCHEDULE", () => {
         delete process.env.PREWARM_SCHEDULE;
       } else {
         process.env.PREWARM_SCHEDULE = originalSchedule;
+      }
+    }
+  });
+});
+
+describe("ComputeStack with LLM_PROVIDER=bedrock", () => {
+  it("Fargate container does NOT have ANTHROPIC_API_KEY secret", () => {
+    const originalProvider = process.env.LLM_PROVIDER;
+    process.env.LLM_PROVIDER = "bedrock";
+
+    try {
+      const app = new cdk.App();
+      const network = new NetworkStack(app, "BedrockNetworkStack");
+      const storage = new StorageStack(app, "BedrockStorageStack");
+      const compute = new ComputeStack(app, "BedrockComputeStack", {
+        vpc: network.vpc,
+        fargateSecurityGroup: network.fargateSecurityGroup,
+        conversationsTable: storage.conversationsTable,
+        settingsTable: storage.settingsTable,
+        taskStateTable: storage.taskStateTable,
+        connectionsTable: storage.connectionsTable,
+        pendingMessagesTable: storage.pendingMessagesTable,
+        dataBucket: storage.dataBucket,
+        ecrRepository: storage.ecrRepository,
+      });
+
+      const template = Template.fromStack(compute);
+      const taskDefs = template.findResources("AWS::ECS::TaskDefinition");
+      const taskDef = Object.values(taskDefs)[0] as Record<string, unknown>;
+      const props = taskDef.Properties as Record<string, unknown>;
+      const containers = props.ContainerDefinitions as Record<string, unknown>[];
+      const container = containers[0];
+      const secrets = container.Secrets as { Name: string }[] | undefined;
+      const hasAnthropicKey = secrets?.some((s) => s.Name === "ANTHROPIC_API_KEY") ?? false;
+      expect(hasAnthropicKey).toBe(false);
+    } finally {
+      if (originalProvider === undefined) {
+        delete process.env.LLM_PROVIDER;
+      } else {
+        process.env.LLM_PROVIDER = originalProvider;
+      }
+    }
+  });
+});
+
+describe("ComputeStack with LLM_PROVIDER=anthropic", () => {
+  it("Fargate container has ANTHROPIC_API_KEY secret", () => {
+    const originalProvider = process.env.LLM_PROVIDER;
+    process.env.LLM_PROVIDER = "anthropic";
+
+    try {
+      const app = new cdk.App();
+      const network = new NetworkStack(app, "AnthropicNetworkStack");
+      const storage = new StorageStack(app, "AnthropicStorageStack");
+      const compute = new ComputeStack(app, "AnthropicComputeStack", {
+        vpc: network.vpc,
+        fargateSecurityGroup: network.fargateSecurityGroup,
+        conversationsTable: storage.conversationsTable,
+        settingsTable: storage.settingsTable,
+        taskStateTable: storage.taskStateTable,
+        connectionsTable: storage.connectionsTable,
+        pendingMessagesTable: storage.pendingMessagesTable,
+        dataBucket: storage.dataBucket,
+        ecrRepository: storage.ecrRepository,
+      });
+
+      const template = Template.fromStack(compute);
+      const taskDefs = template.findResources("AWS::ECS::TaskDefinition");
+      const taskDef = Object.values(taskDefs)[0] as Record<string, unknown>;
+      const props = taskDef.Properties as Record<string, unknown>;
+      const containers = props.ContainerDefinitions as Record<string, unknown>[];
+      const container = containers[0];
+      const secrets = container.Secrets as { Name: string }[];
+      const hasAnthropicKey = secrets?.some((s) => s.Name === "ANTHROPIC_API_KEY") ?? false;
+      expect(hasAnthropicKey).toBe(true);
+    } finally {
+      if (originalProvider === undefined) {
+        delete process.env.LLM_PROVIDER;
+      } else {
+        process.env.LLM_PROVIDER = originalProvider;
+      }
+    }
+  });
+});
+
+describe("Backward compatibility — no LLM_PROVIDER set", () => {
+  it("stack synthesizes without LLM_PROVIDER set", () => {
+    const originalProvider = process.env.LLM_PROVIDER;
+    delete process.env.LLM_PROVIDER;
+
+    try {
+      const app = new cdk.App();
+      const network = new NetworkStack(app, "BackcompatNetworkStack");
+      const storage = new StorageStack(app, "BackcompatStorageStack");
+      const auth = new AuthStack(app, "BackcompatAuthStack");
+      const compute = new ComputeStack(app, "BackcompatComputeStack", {
+        vpc: network.vpc,
+        fargateSecurityGroup: network.fargateSecurityGroup,
+        conversationsTable: storage.conversationsTable,
+        settingsTable: storage.settingsTable,
+        taskStateTable: storage.taskStateTable,
+        connectionsTable: storage.connectionsTable,
+        pendingMessagesTable: storage.pendingMessagesTable,
+        dataBucket: storage.dataBucket,
+        ecrRepository: storage.ecrRepository,
+      });
+      const lambdaAgent = new LambdaAgentStack(app, "BackcompatLambdaAgentStack", {
+        dataBucket: storage.dataBucket,
+        taskStateTable: storage.taskStateTable,
+      });
+
+      // Both stacks should synth without errors
+      const computeTemplate = Template.fromStack(compute);
+      const lambdaTemplate = Template.fromStack(lambdaAgent);
+
+      // Compute should default to anthropic behavior (include ANTHROPIC_API_KEY secret)
+      const taskDefs = computeTemplate.findResources("AWS::ECS::TaskDefinition");
+      const taskDef = Object.values(taskDefs)[0] as Record<string, unknown>;
+      const props = taskDef.Properties as Record<string, unknown>;
+      const containers = props.ContainerDefinitions as Record<string, unknown>[];
+      const container = containers[0];
+      const secrets = container.Secrets as { Name: string }[];
+      const hasAnthropicKey = secrets?.some((s) => s.Name === "ANTHROPIC_API_KEY") ?? false;
+      expect(hasAnthropicKey).toBe(true);
+
+      // Lambda should have LLM_PROVIDER defaulting to "anthropic"
+      const functions = lambdaTemplate.findResources("AWS::Lambda::Function");
+      const fn = Object.values(functions)[0] as Record<string, unknown>;
+      const env = ((fn.Properties as Record<string, unknown>).Environment as Record<string, unknown>).Variables as Record<string, unknown>;
+      expect(env.LLM_PROVIDER).toBe("anthropic");
+    } finally {
+      if (originalProvider === undefined) {
+        delete process.env.LLM_PROVIDER;
+      } else {
+        process.env.LLM_PROVIDER = originalProvider;
       }
     }
   });

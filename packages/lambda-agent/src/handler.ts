@@ -2,6 +2,7 @@ import type {
   LambdaAgentEvent,
   LambdaAgentResponse,
 } from "./types.js";
+import { resolveProvider } from "@serverless-openclaw/shared";
 import { initConfig } from "./config-init.js";
 import { SessionSync } from "./session-sync.js";
 import { SessionLock } from "./session-lock.js";
@@ -49,14 +50,24 @@ export async function handler(
 
   // Cold start initialization
   if (!initialized) {
-    const ssmKeyPath =
-      process.env.SSM_ANTHROPIC_API_KEY ??
-      "/serverless-openclaw/secrets/anthropic-api-key";
+    const provider = resolveProvider();
 
-    const secrets = await resolveSecrets([ssmKeyPath]);
-    const apiKey = secrets.get(ssmKeyPath);
+    if (provider === "bedrock") {
+      await initConfig({
+        provider,
+        bedrockRegion: process.env.BEDROCK_REGION,
+      });
+    } else {
+      const ssmKeyPath =
+        process.env.SSM_ANTHROPIC_API_KEY ??
+        "/serverless-openclaw/secrets/anthropic-api-key";
 
-    await initConfig({ anthropicApiKey: apiKey });
+      const secrets = await resolveSecrets([ssmKeyPath]);
+      const apiKey = secrets.get(ssmKeyPath);
+
+      await initConfig({ anthropicApiKey: apiKey, provider: "anthropic" });
+    }
+
     initialized = true;
   }
 

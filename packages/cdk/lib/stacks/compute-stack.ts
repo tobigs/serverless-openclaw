@@ -79,25 +79,40 @@ export class ComputeStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Provider configuration — read at synth time
+    const llmProvider = process.env.LLM_PROVIDER ?? "anthropic";
+
+    const containerEnvironment: Record<string, string> = {
+      CONVERSATIONS_TABLE: TABLE_NAMES.CONVERSATIONS,
+      SETTINGS_TABLE: TABLE_NAMES.SETTINGS,
+      TASK_STATE_TABLE: TABLE_NAMES.TASK_STATE,
+      CONNECTIONS_TABLE: TABLE_NAMES.CONNECTIONS,
+      PENDING_MESSAGES_TABLE: TABLE_NAMES.PENDING_MESSAGES,
+      DATA_BUCKET: props.dataBucket.bucketName,
+      BRIDGE_PORT: String(BRIDGE_PORT),
+      METRICS_ENABLED: "true",
+      LLM_PROVIDER: llmProvider,
+    };
+
+    if (process.env.BEDROCK_REGION) {
+      containerEnvironment.BEDROCK_REGION = process.env.BEDROCK_REGION;
+    }
+
+    const containerSecrets: Record<string, ecs.Secret> = {
+      BRIDGE_AUTH_TOKEN: ecs.Secret.fromSsmParameter(bridgeAuthToken),
+      OPENCLAW_GATEWAY_TOKEN: ecs.Secret.fromSsmParameter(openclawGatewayToken),
+      TELEGRAM_BOT_TOKEN: ecs.Secret.fromSsmParameter(telegramBotToken),
+    };
+
+    if (llmProvider !== "bedrock") {
+      containerSecrets.ANTHROPIC_API_KEY = ecs.Secret.fromSsmParameter(anthropicApiKey);
+    }
+
     this.taskDefinition.addContainer("openclaw", {
       image: ecs.ContainerImage.fromEcrRepository(props.ecrRepository, "latest"),
       portMappings: [{ containerPort: BRIDGE_PORT }],
-      environment: {
-        CONVERSATIONS_TABLE: TABLE_NAMES.CONVERSATIONS,
-        SETTINGS_TABLE: TABLE_NAMES.SETTINGS,
-        TASK_STATE_TABLE: TABLE_NAMES.TASK_STATE,
-        CONNECTIONS_TABLE: TABLE_NAMES.CONNECTIONS,
-        PENDING_MESSAGES_TABLE: TABLE_NAMES.PENDING_MESSAGES,
-        DATA_BUCKET: props.dataBucket.bucketName,
-        BRIDGE_PORT: String(BRIDGE_PORT),
-        METRICS_ENABLED: "true",
-      },
-      secrets: {
-        BRIDGE_AUTH_TOKEN: ecs.Secret.fromSsmParameter(bridgeAuthToken),
-        OPENCLAW_GATEWAY_TOKEN: ecs.Secret.fromSsmParameter(openclawGatewayToken),
-        ANTHROPIC_API_KEY: ecs.Secret.fromSsmParameter(anthropicApiKey),
-        TELEGRAM_BOT_TOKEN: ecs.Secret.fromSsmParameter(telegramBotToken),
-      },
+      environment: containerEnvironment,
+      secrets: containerSecrets,
       logging: ecs.LogDrivers.awsLogs({
         logGroup,
         streamPrefix: "openclaw",
@@ -151,6 +166,14 @@ export class ComputeStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["execute-api:ManageConnections"],
         resources: ["*"],
+      }),
+    );
+
+    // Bedrock — unconditional to avoid redeployment when switching providers
+    this.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:InvokeModel"],
+        resources: ["arn:aws:bedrock:*::foundation-model/anthropic.*"],
       }),
     );
 

@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { GATEWAY_PORT } from "@serverless-openclaw/shared";
+import { GATEWAY_PORT, type LlmProvider } from "@serverless-openclaw/shared";
 
 interface PatchOptions {
   llmModel?: string;
+  provider?: LlmProvider;
 }
 
 export function patchConfig(configPath: string, options?: PatchOptions): void {
@@ -25,6 +26,14 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   delete config.llm.apiKey;
   if (options?.llmModel) {
     config.llm.model = options.llmModel;
+  }
+
+  // Enable Bedrock discovery when provider is "bedrock"
+  if (options?.provider === "bedrock") {
+    config.models = {
+      ...config.models,
+      bedrockDiscovery: { enabled: true },
+    };
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");

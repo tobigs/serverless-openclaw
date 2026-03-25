@@ -34,6 +34,17 @@ export class LambdaAgentStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Build environment variables — LLM_PROVIDER always set, BEDROCK_REGION only when provided
+    const environment: Record<string, string> = {
+      HOME: "/tmp",
+      SSM_ANTHROPIC_API_KEY: SSM_SECRETS.ANTHROPIC_API_KEY,
+      SESSION_BUCKET: props.dataBucket.bucketName,
+      LLM_PROVIDER: process.env.LLM_PROVIDER ?? "anthropic",
+    };
+    if (process.env.BEDROCK_REGION) {
+      environment["BEDROCK_REGION"] = process.env.BEDROCK_REGION;
+    }
+
     // Lambda function from container image
     this.agentFunction = new lambda.DockerImageFunction(this, "AgentFunction", {
       functionName: "serverless-openclaw-agent",
@@ -45,11 +56,7 @@ export class LambdaAgentStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(15),
       ephemeralStorageSize: cdk.Size.gibibytes(2),
       logGroup,
-      environment: {
-        HOME: "/tmp",
-        SSM_ANTHROPIC_API_KEY: SSM_SECRETS.ANTHROPIC_API_KEY,
-        SESSION_BUCKET: props.dataBucket.bucketName,
-      },
+      environment,
     });
 
     // IAM — S3 session read/write
@@ -80,6 +87,14 @@ export class LambdaAgentStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["cloudwatch:PutMetricData"],
         resources: ["*"],
+      }),
+    );
+
+    // IAM — Bedrock InvokeModel (unconditional to avoid redeployment when switching providers)
+    this.agentFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:InvokeModel"],
+        resources: ["arn:aws:bedrock:*::foundation-model/anthropic.*"],
       }),
     );
 
