@@ -562,7 +562,7 @@ describe("Backward compatibility — no LLM_PROVIDER set", () => {
       const app = new cdk.App();
       const network = new NetworkStack(app, "BackcompatNetworkStack");
       const storage = new StorageStack(app, "BackcompatStorageStack");
-      const auth = new AuthStack(app, "BackcompatAuthStack");
+      new AuthStack(app, "BackcompatAuthStack");
       const compute = new ComputeStack(app, "BackcompatComputeStack", {
         vpc: network.vpc,
         fargateSecurityGroup: network.fargateSecurityGroup,
