@@ -154,7 +154,7 @@ describe("telegram-webhook handler", () => {
       expect.anything(),
       "123456:ABC-DEF",
       "telegram:12345",
-      expect.stringContaining("깨우는 중"),
+      expect.stringContaining("Waking up"),
     );
     expect(mockRouteMessage).toHaveBeenCalled();
   });
@@ -179,7 +179,7 @@ describe("telegram-webhook handler", () => {
       expect.anything(),
       "123456:ABC-DEF",
       "telegram:12345",
-      expect.stringContaining("깨우는 중"),
+      expect.stringContaining("Waking up"),
     );
   });
 
@@ -245,14 +245,14 @@ describe("telegram-webhook handler", () => {
       expect.anything(),
       expect.any(String),
       "telegram:12345",
-      expect.stringContaining("연동 완료"),
+      expect.stringContaining("linked"),
     );
     expect(mockRouteMessage).not.toHaveBeenCalled();
   });
 
   it("should handle /link command with error", async () => {
     mockVerifyOtpAndLink.mockResolvedValueOnce({
-      error: "OTP가 만료되었거나 유효하지 않습니다.",
+      error: "OTP has expired or is invalid.",
     });
 
     const event = makeEvent(
@@ -273,7 +273,7 @@ describe("telegram-webhook handler", () => {
       expect.anything(),
       expect.any(String),
       "telegram:12345",
-      expect.stringContaining("만료"),
+      expect.stringContaining("expired"),
     );
     expect(mockRouteMessage).not.toHaveBeenCalled();
   });
@@ -297,7 +297,7 @@ describe("telegram-webhook handler", () => {
       expect.anything(),
       expect.any(String),
       "telegram:12345",
-      expect.stringContaining("사용법"),
+      expect.stringContaining("Usage"),
     );
     expect(mockVerifyOtpAndLink).not.toHaveBeenCalled();
   });
@@ -321,7 +321,7 @@ describe("telegram-webhook handler", () => {
       expect.anything(),
       expect.any(String),
       "telegram:12345",
-      expect.stringContaining("웹 UI"),
+      expect.stringContaining("Web UI"),
     );
     expect(mockRouteMessage).not.toHaveBeenCalled();
   });

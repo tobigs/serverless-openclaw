@@ -80,7 +80,7 @@ export class MonitoringStack extends cdk.Stack {
     dashboard.addWidgets(
       sectionHeader(
         "Cold Start Performance",
-        "Fargate 컨테이너 시작 시간. S3 복원 → Gateway 연결 → 클라이언트 준비 단계별 소요 시간.",
+        "Fargate container startup time. Breakdown by phase: S3 restore → Gateway connection → Client ready.",
       ),
     );
 
@@ -128,7 +128,7 @@ export class MonitoringStack extends cdk.Stack {
     dashboard.addWidgets(
       sectionHeader(
         "Message Processing",
-        "사용자 메시지 → AI 응답 완료까지의 지연 시간과 응답 길이. 콜드 스타트 중 대기열 소비량.",
+        "Latency and response length from user message to AI response. Pending message consumption during cold starts.",
       ),
     );
 
@@ -172,7 +172,7 @@ export class MonitoringStack extends cdk.Stack {
     dashboard.addWidgets(
       sectionHeader(
         "Lambda Functions",
-        "Gateway Lambda 호출 수, 에러, 실행 시간. ws-message와 telegram-webhook이 핵심 핸들러.",
+        "Gateway Lambda invocations, errors, and duration. ws-message and telegram-webhook are the key handlers.",
       ),
     );
 
@@ -212,7 +212,7 @@ export class MonitoringStack extends cdk.Stack {
     dashboard.addWidgets(
       sectionHeader(
         "API Gateway",
-        "WebSocket 연결 수와 HTTP API 에러율. 4xx는 클라이언트 에러, 5xx는 서버 에러.",
+        "WebSocket connection count and HTTP API error rates. 4xx = client errors, 5xx = server errors.",
       ),
     );
 
@@ -323,7 +323,7 @@ export class MonitoringStack extends cdk.Stack {
     dashboard.addWidgets(
       sectionHeader(
         "Infrastructure — ECS & DynamoDB",
-        "Fargate 컨테이너 리소스 사용량과 DynamoDB 테이블별 읽기/쓰기 소비량.",
+        "Fargate container resource usage and DynamoDB read/write consumption per table.",
       ),
     );
 
