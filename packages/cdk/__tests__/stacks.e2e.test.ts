@@ -100,6 +100,34 @@ describe("CDK Stacks E2E — synth all stacks", () => {
     it("5 SSM SecureString parameters via Custom Resources", () => {
       secretsTemplate.resourceCountIs("Custom::AWS", 5);
     });
+
+    it("AnthropicApiKey has default value when LLM_PROVIDER=bedrock", () => {
+      const originalProvider = process.env.LLM_PROVIDER;
+      process.env.LLM_PROVIDER = "bedrock";
+      try {
+        const app = new cdk.App();
+        const stack = new SecretsStack(app, "BedrockSecretsStack");
+        const template = Template.fromStack(stack);
+        template.hasParameter("AnthropicApiKey", { Default: "not-used" });
+      } finally {
+        if (originalProvider === undefined) delete process.env.LLM_PROVIDER;
+        else process.env.LLM_PROVIDER = originalProvider;
+      }
+    });
+
+    it("OpenclawGatewayToken has default value when AGENT_RUNTIME=lambda", () => {
+      const originalRuntime = process.env.AGENT_RUNTIME;
+      process.env.AGENT_RUNTIME = "lambda";
+      try {
+        const app = new cdk.App();
+        const stack = new SecretsStack(app, "LambdaSecretsStack");
+        const template = Template.fromStack(stack);
+        template.hasParameter("OpenclawGatewayToken", { Default: "not-used" });
+      } finally {
+        if (originalRuntime === undefined) delete process.env.AGENT_RUNTIME;
+        else process.env.AGENT_RUNTIME = originalRuntime;
+      }
+    });
   });
 
   // ── NetworkStack ──

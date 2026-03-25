@@ -4,23 +4,39 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import type { Construct } from "constructs";
 import { SSM_SECRETS } from "./ssm-params.js";
 
-const SECRET_PARAMS = [
-  { id: "BridgeAuthToken", path: SSM_SECRETS.BRIDGE_AUTH_TOKEN, desc: "Bridge auth token" },
-  { id: "OpenclawGatewayToken", path: SSM_SECRETS.OPENCLAW_GATEWAY_TOKEN, desc: "OpenClaw Gateway token" },
-  { id: "AnthropicApiKey", path: SSM_SECRETS.ANTHROPIC_API_KEY, desc: "Anthropic API key" },
-  { id: "TelegramBotToken", path: SSM_SECRETS.TELEGRAM_BOT_TOKEN, desc: "Telegram bot token" },
-  { id: "TelegramWebhookSecret", path: SSM_SECRETS.TELEGRAM_WEBHOOK_SECRET, desc: "Telegram webhook secret" },
-] as const;
+type SecretParam = { id: string; path: string; desc: string; default?: string };
 
 export class SecretsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    for (const { id: paramId, path, desc } of SECRET_PARAMS) {
+    const llmProvider = process.env.LLM_PROVIDER ?? "anthropic";
+    const agentRuntime = process.env.AGENT_RUNTIME ?? "fargate";
+
+    const secretParams: SecretParam[] = [
+      { id: "BridgeAuthToken", path: SSM_SECRETS.BRIDGE_AUTH_TOKEN, desc: "Bridge auth token" },
+      {
+        id: "OpenclawGatewayToken",
+        path: SSM_SECRETS.OPENCLAW_GATEWAY_TOKEN,
+        desc: "OpenClaw Gateway token",
+        default: agentRuntime === "lambda" ? "not-used" : undefined,
+      },
+      {
+        id: "AnthropicApiKey",
+        path: SSM_SECRETS.ANTHROPIC_API_KEY,
+        desc: "Anthropic API key",
+        default: llmProvider === "bedrock" ? "not-used" : undefined,
+      },
+      { id: "TelegramBotToken", path: SSM_SECRETS.TELEGRAM_BOT_TOKEN, desc: "Telegram bot token" },
+      { id: "TelegramWebhookSecret", path: SSM_SECRETS.TELEGRAM_WEBHOOK_SECRET, desc: "Telegram webhook secret" },
+    ];
+
+    for (const { id: paramId, path, desc, default: defaultValue } of secretParams) {
       const cfnParam = new cdk.CfnParameter(this, paramId, {
         type: "String",
         noEcho: true,
         description: desc,
+        ...(defaultValue !== undefined ? { default: defaultValue } : {}),
       });
 
       new cr.AwsCustomResource(this, `${paramId}Param`, {
