@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import type { Construct } from "constructs";
 
 export class AuthStack extends cdk.Stack {
@@ -10,9 +11,32 @@ export class AuthStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    const allowedEmail = process.env.ALLOWED_SIGNUP_EMAIL;
+    const selfSignUpEnabled = !!allowedEmail;
+
+    // Pre sign-up trigger: validates email against ALLOWED_EMAIL_PATTERN (exact or wildcard, e.g. *@example.com)
+    const preSignUpFn = allowedEmail
+      ? new lambda.Function(this, "PreSignUpFn", {
+          runtime: lambda.Runtime.NODEJS_22_X,
+          handler: "index.handler",
+          code: lambda.Code.fromInline(`
+exports.handler = async (event) => {
+  const email = (event.request.userAttributes.email || "").toLowerCase();
+  const pattern = (process.env.ALLOWED_EMAIL_PATTERN || "").toLowerCase();
+  const matches = pattern.startsWith("*@")
+    ? email.endsWith(pattern.slice(1))
+    : email === pattern;
+  if (!matches) throw new Error("Sign-up not permitted for this email address.");
+  return event;
+};`),
+          environment: { ALLOWED_EMAIL_PATTERN: allowedEmail },
+        })
+      : undefined;
+
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: "serverless-openclaw-users",
-      selfSignUpEnabled: true,
+      selfSignUpEnabled,
+      lambdaTriggers: preSignUpFn ? { preSignUp: preSignUpFn } : undefined,
       signInAliases: { email: true },
       autoVerify: { email: true },
       passwordPolicy: {
