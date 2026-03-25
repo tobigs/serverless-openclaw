@@ -21,7 +21,7 @@ export function TelegramLink({ token }: Props) {
       const s = await getLinkStatus(token);
       setStatus(s);
     } catch {
-      setError("연동 상태를 불러올 수 없습니다.");
+      setError("Failed to load link status.");
     } finally {
       setLoading(false);
     }
@@ -53,7 +53,7 @@ export function TelegramLink({ token }: Props) {
       setOtpCode(code);
       setRemaining(OTP_DURATION_SEC);
     } catch {
-      setError("OTP 생성에 실패했습니다.");
+      setError("Failed to generate OTP.");
     }
   };
 
@@ -64,25 +64,25 @@ export function TelegramLink({ token }: Props) {
       setStatus({ linked: false });
       setOtpCode(null);
     } catch {
-      setError("연동 해제에 실패했습니다.");
+      setError("Failed to unlink.");
     }
   };
 
   if (loading) {
-    return <div className="telegram-link">불러오는 중...</div>;
+    return <div className="telegram-link">Loading...</div>;
   }
 
   return (
     <div className="telegram-link">
-      <h3 className="telegram-link__title">Telegram 연동</h3>
+      <h3 className="telegram-link__title">Telegram Link</h3>
 
       {error && <p className="telegram-link__error">{error}</p>}
 
       {status?.linked ? (
         <div className="telegram-link__linked">
-          <p>Telegram ID <strong>{status.telegramUserId}</strong> 연동됨</p>
+          <p>Telegram ID <strong>{status.telegramUserId}</strong> linked</p>
           <button className="telegram-link__btn telegram-link__btn--danger" onClick={handleUnlink}>
-            연동 해제
+            Unlink
           </button>
         </div>
       ) : (
@@ -93,22 +93,22 @@ export function TelegramLink({ token }: Props) {
                 <>
                   <p className="telegram-link__otp-code">{otpCode}</p>
                   <p className="telegram-link__otp-guide">
-                    Telegram 봇에 <code>/link {otpCode}</code>를 전송하세요.
+                    Send <code>/link {otpCode}</code> to the Telegram bot.
                   </p>
                   <p className="telegram-link__countdown">
                     {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}
                   </p>
                 </>
               ) : (
-                <p className="telegram-link__expired">코드가 만료되었습니다.</p>
+                <p className="telegram-link__expired">Code has expired.</p>
               )}
               <button className="telegram-link__btn" onClick={handleGenerateOtp}>
-                새 코드 생성
+                Generate new code
               </button>
             </div>
           ) : (
             <button className="telegram-link__btn" onClick={handleGenerateOtp}>
-              Telegram 연동
+              Link Telegram
             </button>
           )}
         </div>

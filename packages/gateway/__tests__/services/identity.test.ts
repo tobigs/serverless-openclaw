@@ -117,7 +117,7 @@ describe("identity service", () => {
 
       const result = await verifyOtpAndLink(mockSend, "67890", "000000");
 
-      expect(result).toEqual({ error: "OTP가 만료되었거나 유효하지 않습니다." });
+      expect(result).toEqual({ error: "OTP has expired or is invalid." });
       expect(mockSend).toHaveBeenCalledTimes(1);
     });
 
@@ -137,7 +137,7 @@ describe("identity service", () => {
 
       const result = await verifyOtpAndLink(mockSend, "67890", "123456");
 
-      expect(result).toEqual({ error: "OTP가 만료되었거나 유효하지 않습니다." });
+      expect(result).toEqual({ error: "OTP has expired or is invalid." });
       expect(mockSend).toHaveBeenCalledTimes(4);
     });
 
@@ -154,7 +154,7 @@ describe("identity service", () => {
       const result = await verifyOtpAndLink(mockSend, "67890", "123456");
 
       expect(result).toEqual({
-        error: "Telegram 컨테이너가 실행 중입니다. 약 15분 후 다시 시도해주세요.",
+        error: "A Telegram container is currently running. Please try again in about 15 minutes.",
       });
       // Only 2 calls: OTP lookup + TaskState check. OTP NOT consumed.
       expect(mockSend).toHaveBeenCalledTimes(2);
@@ -175,7 +175,7 @@ describe("identity service", () => {
       const result = await verifyOtpAndLink(mockSend, "67890", "123456");
 
       expect(result).toEqual({
-        error: "이 Telegram 계정은 이미 다른 계정에 연동되어 있습니다.",
+        error: "This Telegram account is already linked to a different account.",
       });
       // Only 3 calls: OTP lookup + TaskState + existing link. OTP NOT consumed.
       expect(mockSend).toHaveBeenCalledTimes(3);
@@ -218,7 +218,7 @@ describe("identity service", () => {
       const result = await verifyOtpAndLink(mockSend, "67890", "123456");
 
       expect(result).toEqual({
-        error: "Telegram 컨테이너가 실행 중입니다. 약 15분 후 다시 시도해주세요.",
+        error: "A Telegram container is currently running. Please try again in about 15 minutes.",
       });
       // OTP NOT consumed
       expect(mockSend).toHaveBeenCalledTimes(2);
