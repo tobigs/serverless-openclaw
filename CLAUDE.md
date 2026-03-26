@@ -118,6 +118,7 @@ Table names use the `TABLE_NAMES` constant from `@serverless-openclaw/shared`.
 - **Predictive Pre-Warming:** Optional EventBridge cron → prewarm Lambda → ECS RunTask with `USER_ID=system:prewarm`. Container claimed by first real user message (TaskState ownership transfer). Watchdog skips tasks where `now < prewarmUntil`. Configured via `PREWARM_SCHEDULE` (comma-separated crons) and `PREWARM_DURATION` (minutes, default 60) env vars. Disabled by default (no EventBridge rules created without schedule).
 - **Telegram-Web Identity Linking:** OTP-based linking via Settings table. Web UI generates 6-digit OTP -> Telegram `/link {code}` verifies and creates bilateral link records -> resolveUserId maps telegram userId to cognitoId for container sharing. Unlinking is Web-only (IDOR prevention). REST API: POST /link/generate-otp, GET /link/status, POST /link/unlink (all JWT-authenticated)
 - **HTTP API CORS:** `corsPreflight` required — Web (CloudFront) → API Gateway is cross-origin. `allowOrigins: ["*"]`, `allowHeaders: [Authorization, Content-Type]`
+- **Telegram-only deployment:** `DEPLOY_WEB=false` skips WebStack and the web asset build. Use `make deploy-telegram`. MonitoringStack and ApiStack handle missing WebStack gracefully.
 
 ## Phase 1 Progress (10/10 — Complete)
 
