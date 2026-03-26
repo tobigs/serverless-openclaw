@@ -150,7 +150,7 @@ export async function handler(event: {
   }
 
   console.log("[telegram] routing message", { userId, channel: "telegram", agentRuntime });
-  await routeMessage({
+  const routeResult = await routeMessage({
     userId,
     message: text,
     channel: "telegram",
@@ -177,12 +177,13 @@ export async function handler(event: {
     onLambdaResponse: async (payloads) => {
       for (const payload of payloads ?? []) {
         if (payload.text && botToken) {
+          console.log("[telegram] sending lambda response", { userId, textLength: payload.text.length });
           await sendTelegramMessage(fetch as never, botToken, connectionId, payload.text);
         }
       }
     },
   });
 
-  console.log("[telegram] message routed successfully", { userId });
+  console.log("[telegram] message routed successfully", { userId, result: routeResult });
   return { statusCode: 200, body: "OK" };
 }

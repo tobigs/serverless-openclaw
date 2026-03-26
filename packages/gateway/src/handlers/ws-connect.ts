@@ -21,7 +21,10 @@ export async function handler(event: {
   const connectionId = event.requestContext.connectionId;
   const token = event.queryStringParameters?.token;
 
+  console.log("[ws-connect] connect", { connectionId });
+
   if (!token) {
+    console.warn("[ws-connect] auth failed: missing token", { connectionId });
     return { statusCode: 401, body: JSON.stringify({ error: "Missing token" }) };
   }
 
@@ -30,10 +33,12 @@ export async function handler(event: {
     const payload = await verifier.verify(token);
     userId = payload.sub;
   } catch {
+    console.warn("[ws-connect] auth failed: invalid token", { connectionId });
     return { statusCode: 401, body: JSON.stringify({ error: "Invalid token" }) };
   }
 
   await saveConnection(dynamoSend, connectionId!, userId);
 
+  console.log("[ws-connect] connected", { connectionId, userId });
   return { statusCode: 200, body: "Connected" };
 }

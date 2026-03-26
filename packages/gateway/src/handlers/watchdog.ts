@@ -79,8 +79,10 @@ export async function handler(): Promise<void> {
   )) as { Items?: TaskStateItem[] };
 
   const items = result.Items ?? [];
+  console.log("[watchdog] scan complete", { tasks: items.length, timeoutMin: Math.round(timeout / 60000) });
 
   for (const item of items) {
+    const userId = item.PK.replace(/^USER#/, "");
     const startedAt = new Date(item.startedAt).getTime();
     const lastActivity = new Date(item.lastActivity).getTime();
     const uptimeMs = now - startedAt;
@@ -95,12 +97,14 @@ export async function handler(): Promise<void> {
           );
           const task = desc.tasks?.[0];
           if (!task || task.lastStatus === "STOPPED") {
+            console.log("[watchdog] stale Starting deleted", { userId, taskArn: item.taskArn, uptimeMin: Math.round(uptimeMs / 60000) });
             await ddb.send(
               new DeleteCommand({ TableName: TABLE_NAMES.TASK_STATE, Key: { PK: item.PK } }),
             );
           }
         } catch {
           // Task not found — clean up the stale entry
+          console.log("[watchdog] stale Starting deleted (task not found)", { userId, taskArn: item.taskArn });
           await ddb.send(
             new DeleteCommand({ TableName: TABLE_NAMES.TASK_STATE, Key: { PK: item.PK } }),
           );
@@ -116,6 +120,7 @@ export async function handler(): Promise<void> {
       );
       const task = desc.tasks?.[0];
       if (!task || task.lastStatus === "STOPPED") {
+        console.log("[watchdog] stale Running deleted", { userId, taskArn: item.taskArn });
         await ddb.send(
           new DeleteCommand({ TableName: TABLE_NAMES.TASK_STATE, Key: { PK: item.PK } }),
         );
@@ -123,6 +128,7 @@ export async function handler(): Promise<void> {
       }
     } catch {
       // Task not found — clean up stale entry
+      console.log("[watchdog] stale Running deleted (task not found)", { userId, taskArn: item.taskArn });
       await ddb.send(
         new DeleteCommand({ TableName: TABLE_NAMES.TASK_STATE, Key: { PK: item.PK } }),
       );
@@ -131,17 +137,20 @@ export async function handler(): Promise<void> {
 
     // Running tasks: don't stop if uptime is too short
     if (uptimeMs < MIN_UPTIME_MINUTES * 60 * 1000) {
+      console.log("[watchdog] skipping: min uptime not reached", { userId, uptimeMin: Math.round(uptimeMs / 60000) });
       continue;
     }
 
     // Skip tasks under prewarm protection
     if (item.prewarmUntil && now < item.prewarmUntil) {
+      console.log("[watchdog] skipping: prewarm protection", { userId, prewarmUntil: new Date(item.prewarmUntil).toISOString() });
       continue;
     }
 
     // Stop tasks that have been inactive too long
     const inactiveMs = now - lastActivity;
     if (inactiveMs > timeout) {
+      console.log("[watchdog] stopping: inactivity timeout", { userId, taskArn: item.taskArn, inactiveMin: Math.round(inactiveMs / 60000) });
       await ecs.send(
         new StopTaskCommand({
           cluster,

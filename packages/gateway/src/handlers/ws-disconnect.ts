@@ -12,6 +12,7 @@ export async function handler(event: {
 }): Promise<APIGatewayProxyResultV2> {
   const connectionId = event.requestContext.connectionId!;
 
+  console.log("[ws-disconnect] disconnect", { connectionId });
   await deleteConnection(dynamoSend, connectionId);
 
   return { statusCode: 200, body: "Disconnected" };

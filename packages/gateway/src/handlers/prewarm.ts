@@ -42,6 +42,7 @@ export async function handler(): Promise<void> {
 
   const durationMin = parseInt(process.env.PREWARM_DURATION || "", 10) || DEFAULT_PREWARM_DURATION_MIN;
   const prewarmUntil = Date.now() + durationMin * 60 * 1000;
+  console.log("[prewarm] start", { durationMin, prewarmUntil: new Date(prewarmUntil).toISOString() });
 
   // Scan for any active tasks (Running or Starting)
   const result = (await ddb.send(
@@ -58,6 +59,7 @@ export async function handler(): Promise<void> {
   if (items.length > 0) {
     // Extend prewarmUntil on the first active task
     const item = items[0];
+    console.log("[prewarm] task already running, extending prewarm", { taskArn: item.taskArn, status: item.status });
     await ddb.send(
       new UpdateCommand({
         TableName: TABLE_NAMES.TASK_STATE,
@@ -74,6 +76,7 @@ export async function handler(): Promise<void> {
   }
 
   // No active tasks — start a new pre-warmed container
+  console.log("[prewarm] starting new prewarm task");
   const taskResult = (await ecs.send(
     new RunTaskCommand({
       cluster: process.env.ECS_CLUSTER_ARN ?? "",
@@ -104,10 +107,11 @@ export async function handler(): Promise<void> {
 
   const taskArn = taskResult.tasks?.[0]?.taskArn;
   if (!taskArn) {
-    console.error("Prewarm RunTask returned no tasks");
+    console.error("[prewarm] RunTask returned no tasks");
     return;
   }
 
+  console.log("[prewarm] task started", { taskArn });
   await ddb.send(
     new PutCommand({
       TableName: TABLE_NAMES.TASK_STATE,

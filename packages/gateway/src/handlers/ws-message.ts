@@ -55,8 +55,11 @@ export async function handler(event: {
     return { statusCode: 400, body: JSON.stringify({ error: "Invalid JSON" }) };
   }
 
+  console.log("[ws-message] received", { connectionId, action: msg.action });
+
   const connection = await getConnection(dynamoSend, connectionId);
   if (!connection) {
+    console.warn("[ws-message] connection not found", { connectionId });
     return { statusCode: 403, body: JSON.stringify({ error: "Connection not found" }) };
   }
 
@@ -64,15 +67,18 @@ export async function handler(event: {
 
   if (msg.action === "getStatus") {
     const state = await getTaskState(dynamoSend, userId);
+    const status = state?.status ?? "idle";
+    console.log("[ws-message] getStatus", { userId, status });
     const response: ServerMessage = {
       type: "status",
-      status: state?.status ?? "idle",
+      status,
     };
     return { statusCode: 200, body: JSON.stringify(response) };
   }
 
   if (msg.action === "sendMessage") {
     const agentRuntime = (process.env.AGENT_RUNTIME as "lambda" | "fargate" | "both") ?? "fargate";
+    console.log("[ws-message] sendMessage", { userId, agentRuntime, messageLength: (msg.message ?? "").length });
     const secrets = await resolveSecrets([process.env.SSM_BRIDGE_AUTH_TOKEN!]);
 
     if (agentRuntime === "lambda" || agentRuntime === "both") {
@@ -116,6 +122,7 @@ export async function handler(event: {
       },
     });
 
+    console.log("[ws-message] route result", { userId, result });
     if (result === "started" || result === "queued") {
       await pushToConnection(connectionId, { type: "status", status: "Starting" });
     }
@@ -127,5 +134,6 @@ export async function handler(event: {
     return { statusCode: 200, body: JSON.stringify({ type: "error", error: "Use REST API for history" }) };
   }
 
+  console.warn("[ws-message] unknown action", { connectionId, action: msg.action });
   return { statusCode: 400, body: JSON.stringify({ error: "Unknown action" }) };
 }
