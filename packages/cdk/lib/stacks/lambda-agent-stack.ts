@@ -59,6 +59,9 @@ export class LambdaAgentStack extends cdk.Stack {
     // IAM — S3 session read/write
     props.dataBucket.grantReadWrite(this.agentFunction, "sessions/*");
 
+    // IAM — S3 workspace read/write
+    props.dataBucket.grantReadWrite(this.agentFunction, "workspaces/*");
+
     // IAM — SSM SecureString resolution
     this.agentFunction.addToRolePolicy(
       new iam.PolicyStatement({

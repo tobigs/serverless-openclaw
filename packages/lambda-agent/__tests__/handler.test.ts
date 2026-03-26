@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { LambdaAgentEvent, LambdaAgentResponse } from "../src/types.js";
 
 // Use vi.hoisted to ensure mock references are stable across vi.resetModules()
-const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAgent, mockAcquire, mockRelease } = vi.hoisted(() => ({
+const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAgent, mockAcquire, mockRelease, mockWsDownload, mockWsUpload } = vi.hoisted(() => ({
   mockInitConfig: vi.fn().mockResolvedValue({
     configDir: "/tmp/.openclaw",
     sessionsDir: "/tmp/.openclaw/agents/default/sessions",
@@ -15,6 +15,8 @@ const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAge
   mockRunAgent: vi.fn(),
   mockAcquire: vi.fn().mockResolvedValue(true),
   mockRelease: vi.fn().mockResolvedValue(undefined),
+  mockWsDownload: vi.fn().mockResolvedValue(undefined),
+  mockWsUpload: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../src/config-init.js", () => ({
@@ -44,6 +46,13 @@ vi.mock("../src/session-lock.js", () => ({
   })),
 }));
 
+vi.mock("../src/workspace-sync.js", () => ({
+  WorkspaceSync: vi.fn().mockImplementation(() => ({
+    download: mockWsDownload,
+    upload: mockWsUpload,
+  })),
+}));
+
 describe("handler", () => {
   let originalBucket: string | undefined;
 
@@ -56,6 +65,8 @@ describe("handler", () => {
     mockRunAgent.mockClear();
     mockAcquire.mockClear();
     mockRelease.mockClear();
+    mockWsDownload.mockClear();
+    mockWsUpload.mockClear();
 
     // Set required env var
     originalBucket = process.env.SESSION_BUCKET;
@@ -183,5 +194,39 @@ describe("handler", () => {
         disableTools: true,
       }),
     );
+  });
+
+  it("should download workspace in parallel with session", async () => {
+    const handler = await loadHandler();
+    await handler(createEvent());
+    expect(mockWsDownload).toHaveBeenCalledWith("user-123");
+  });
+
+  it("should upload workspace after successful agent run", async () => {
+    const handler = await loadHandler();
+    await handler(createEvent());
+    expect(mockWsUpload).toHaveBeenCalledWith("user-123");
+  });
+
+  it("should upload workspace even when agent errors", async () => {
+    mockRunAgent.mockRejectedValueOnce(new Error("Agent failed"));
+    const handler = await loadHandler();
+    await handler(createEvent());
+    expect(mockWsUpload).toHaveBeenCalledWith("user-123");
+  });
+
+  it("should proceed when workspace download fails", async () => {
+    mockWsDownload.mockRejectedValueOnce(new Error("S3 error"));
+    const handler = await loadHandler();
+    const result = await handler(createEvent());
+    expect(result.success).toBe(true);
+    expect(mockRunAgent).toHaveBeenCalled();
+  });
+
+  it("should return success when workspace upload fails", async () => {
+    mockWsUpload.mockRejectedValueOnce(new Error("S3 error"));
+    const handler = await loadHandler();
+    const result = await handler(createEvent());
+    expect(result.success).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import type {
 import { resolveProviderConfig } from "@serverless-openclaw/shared";
 import { initConfig } from "./config-init.js";
 import { SessionSync } from "./session-sync.js";
+import { WorkspaceSync } from "./workspace-sync.js";
 import { SessionLock } from "./session-lock.js";
 import { resolveSecrets } from "./secrets.js";
 import { runAgent } from "./agent-runner.js";
@@ -75,7 +76,14 @@ export async function handler(
   }
 
   const sync = new SessionSync(bucket, "/tmp/.openclaw");
-  const sessionFile = await sync.download(event.userId, event.sessionId);
+  const workspaceSync = new WorkspaceSync({ bucket, localPath: "/tmp/workspace" });
+
+  const [sessionFile] = await Promise.all([
+    sync.download(event.userId, event.sessionId),
+    workspaceSync.download(event.userId).catch((err) => {
+      console.error("[workspace-sync] download failed, continuing:", err);
+    }),
+  ]);
 
   try {
     try {
@@ -92,7 +100,12 @@ export async function handler(
       });
 
       // Always upload session after run (even if no payloads)
-      await sync.upload(event.userId, event.sessionId);
+      await Promise.all([
+        sync.upload(event.userId, event.sessionId),
+        workspaceSync.upload(event.userId).catch((err) => {
+          console.error("[workspace-sync] upload failed:", err);
+        }),
+      ]);
 
       return {
         success: true,
@@ -103,7 +116,12 @@ export async function handler(
       };
     } catch (err: unknown) {
       // Upload session even on error (partial transcript may be valuable)
-      await sync.upload(event.userId, event.sessionId);
+      await Promise.all([
+        sync.upload(event.userId, event.sessionId),
+        workspaceSync.upload(event.userId).catch((err) => {
+          console.error("[workspace-sync] upload failed:", err);
+        }),
+      ]);
 
       return {
         success: false,

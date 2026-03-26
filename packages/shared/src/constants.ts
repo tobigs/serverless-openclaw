@@ -40,6 +40,19 @@ export const SESSION_S3_PREFIX = "sessions";
 export const SESSION_DEFAULT_AGENT = "default";
 export const SESSION_DEFAULT_KEY = "main";
 
+// Workspace S3 paths (shared between Lambda and Fargate)
+export const WORKSPACE_S3_PREFIX = "workspaces";
+export const WORKSPACE_DEFAULT_ALLOWLIST = [
+  "MEMORY.md",
+  "memory/**",
+  "AGENTS.md",
+  "USER.md",
+  "SOUL.md",
+  "CLAUDE.md",
+] as const;
+export const WORKSPACE_MAX_FILE_SIZE = 1_048_576; // 1 MB
+export const WORKSPACE_MAX_TOTAL_SIZE = 52_428_800; // 50 MB
+
 // Prewarm
 export const PREWARM_USER_ID = "system:prewarm";
 export const DEFAULT_PREWARM_DURATION_MIN = 60;
