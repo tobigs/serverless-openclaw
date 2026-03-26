@@ -16,6 +16,7 @@ import {
 const app = new cdk.App();
 
 const agentRuntime = process.env.AGENT_RUNTIME ?? "fargate"; // default: backward compatible
+const deployWeb = process.env.DEPLOY_WEB !== "false"; // default: true (deploy web)
 
 // Secrets (SSM SecureString parameters)
 const secrets = new SecretsStack(app, "SecretsStack");
@@ -76,12 +77,14 @@ if (compute) {
 api.addDependency(secrets);
 
 // Step 1-8: Web UI (S3 + CloudFront)
-new WebStack(app, "WebStack", {
-  webSocketUrl: `wss://${api.webSocketApi.apiId}.execute-api.${cdk.Aws.REGION}.amazonaws.com/prod`,
-  apiUrl: api.httpApi.apiEndpoint,
-  userPoolId: auth.userPool.userPoolId,
-  userPoolClientId: auth.userPoolClient.userPoolClientId,
-});
+if (deployWeb) {
+  new WebStack(app, "WebStack", {
+    webSocketUrl: `wss://${api.webSocketApi.apiId}.execute-api.${cdk.Aws.REGION}.amazonaws.com/prod`,
+    apiUrl: api.httpApi.apiEndpoint,
+    userPoolId: auth.userPool.userPoolId,
+    userPoolClientId: auth.userPoolClient.userPoolClientId,
+  });
+}
 
 // Monitoring Dashboard
 new MonitoringStack(app, "MonitoringStack");

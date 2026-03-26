@@ -11,7 +11,7 @@ USER_POOL  := ap-northeast-2_r6wLZ95dd
 CLIENT_ID  := 1hgp8h9jico924p1atcr2c9ki9
 CLUSTER    := serverless-openclaw
 
-.PHONY: help build test lint deploy-all deploy-web deploy-image deploy-image-soci \
+.PHONY: help build test lint deploy-all deploy-telegram deploy-web deploy-image deploy-image-soci \
         user-create user-password user-list user-delete \
         task-list task-status task-stop task-stop-recent task-logs task-clean \
         telegram-webhook telegram-status \
@@ -54,6 +54,9 @@ teardown: ## Destroy all CDK stacks (DANGEROUS)
 	@echo "⚠️  This will delete ALL resources including data!"
 	@read -p "Type 'yes' to confirm: " confirm && [ "$$confirm" = "yes" ] || exit 1
 	cd packages/cdk && npx cdk destroy --all --profile $(AWS_PROFILE)
+
+deploy-telegram: ## Deploy all stacks except WebStack (Telegram-only)
+	cd packages/cdk && DEPLOY_WEB=false npx cdk deploy --all --profile $(AWS_PROFILE) --require-approval never
 
 ## ─── Container Image ─────────────────────────────────────────────────────────
 
