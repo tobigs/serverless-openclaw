@@ -38,9 +38,48 @@ export async function initConfig(
     bedrockDiscovery.region = options.bedrockRegion;
   }
 
+  // In eu-central-1, all Anthropic models are INFERENCE_PROFILE type only —
+  // bedrockDiscovery (ListFoundationModels) registers their foundation model IDs,
+  // but actual invocation requires the eu.anthropic.* cross-region inference profile
+  // IDs which don't appear in ListFoundationModels. We declare them explicitly here
+  // so they are merged into the amazon-bedrock provider registry at startup.
+  const bedrockExplicitModels = isBedrock
+    ? {
+        providers: {
+          "amazon-bedrock": {
+            auth: "aws-sdk",
+            api: "bedrock-converse-stream",
+            baseUrl: `https://bedrock-runtime.${options?.bedrockRegion ?? "eu-central-1"}.amazonaws.com`,
+            models: [
+              {
+                id: "eu.anthropic.claude-3-7-sonnet-20250219-v1:0",
+                name: "Claude 3.7 Sonnet (EU)",
+                api: "bedrock-converse-stream",
+                reasoning: true,
+                input: ["text", "image"],
+                cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+                contextWindow: 200000,
+                maxTokens: 128000,
+              },
+              {
+                id: "eu.anthropic.claude-3-5-sonnet-20240620-v1:0",
+                name: "Claude 3.5 Sonnet (EU)",
+                api: "bedrock-converse-stream",
+                reasoning: false,
+                input: ["text", "image"],
+                cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+                contextWindow: 200000,
+                maxTokens: 8192,
+              },
+            ],
+          },
+        },
+      }
+    : undefined;
+
   const config = {
     gateway: { mode: "local" },
-    models: { bedrockDiscovery },
+    models: { bedrockDiscovery, ...bedrockExplicitModels },
   };
   fs.writeFileSync(configPath, JSON.stringify(config), "utf-8");
 

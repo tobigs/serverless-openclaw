@@ -90,11 +90,23 @@ export class LambdaAgentStack extends cdk.Stack {
       }),
     );
 
-    // IAM — Bedrock InvokeModel (unconditional to avoid redeployment when switching providers)
+    // IAM — Bedrock InvokeModel: foundation models + cross-region inference profiles (eu./global.)
     this.agentFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["bedrock:InvokeModel"],
-        resources: ["arn:aws:bedrock:*::foundation-model/anthropic.*"],
+        resources: [
+          "arn:aws:bedrock:*::foundation-model/anthropic.*",
+          `arn:aws:bedrock:*:${cdk.Aws.ACCOUNT_ID}:inference-profile/eu.anthropic.*`,
+          `arn:aws:bedrock:*:${cdk.Aws.ACCOUNT_ID}:inference-profile/global.anthropic.*`,
+        ],
+      }),
+    );
+
+    // IAM — Bedrock model discovery (ListFoundationModels + ListInferenceProfiles)
+    this.agentFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["bedrock:ListFoundationModels", "bedrock:ListInferenceProfiles"],
+        resources: ["*"],
       }),
     );
 

@@ -58,7 +58,7 @@ interface AgentResult {
 export async function runAgent(params: RunAgentParams): Promise<AgentResult> {
   const runEmbeddedPiAgent = await loadRunEmbeddedPiAgent();
   const provider = resolveProvider();
-  const rawModel = params.model ?? "claude-sonnet-4-20250514";
+  const rawModel = params.model ?? "eu.anthropic.claude-3-7-sonnet-20250219-v1:0";
   const model = provider === "bedrock" ? mapModelId(rawModel) : rawModel;
 
   const result = await runEmbeddedPiAgent({
