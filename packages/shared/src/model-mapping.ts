@@ -7,12 +7,17 @@ const KNOWN_MODEL_PATTERN = /^claude-[a-z]+-[\d]+-[\d\w-]+$/;
 /**
  * Maps an Anthropic model ID to Bedrock format.
  *
- * - If `modelId` already starts with `"anthropic."`, it is returned unchanged.
+ * - If `modelId` already starts with `"anthropic."`, `"eu."`, or `"global."`,
+ *   it is a Bedrock model/inference-profile ID and is returned unchanged.
  * - Otherwise, returns `"anthropic.${modelId}-v1:0"`.
  * - Logs a warning for IDs that don't match known Claude model patterns.
  */
 export function mapModelId(modelId: string): string {
-  if (modelId.startsWith("anthropic.")) {
+  if (
+    modelId.startsWith("anthropic.") ||
+    modelId.startsWith("eu.") ||
+    modelId.startsWith("global.")
+  ) {
     return modelId;
   }
 
