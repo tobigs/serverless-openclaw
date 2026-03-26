@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomBytes, createHmac, timingSafeEqual } from "node:crypto";
 import httpProxy from "http-proxy";
+import { validateUiToken } from "@serverless-openclaw/shared";
 
 export interface UiProxyDeps {
   bridgeAuthToken: string;
@@ -44,6 +45,7 @@ function parseCookies(header: string | undefined): Record<string, string> {
 
 export function createUiProxy(deps: UiProxyDeps): UiProxyServer {
   const cookieSecret = randomBytes(32);
+  const usedTokens = new Set<string>();
 
   const proxy = httpProxy.createProxyServer({
     target: `http://localhost:${deps.targetPort}`,
@@ -93,7 +95,7 @@ export function createUiProxy(deps: UiProxyDeps): UiProxyServer {
     if (url.pathname !== "/ui") return false;
 
     const token = url.searchParams.get("token");
-    if (!token || !safeCompare(token, deps.bridgeAuthToken)) {
+    if (!token || !validateUiToken(token, deps.bridgeAuthToken, usedTokens)) {
       res.writeHead(401);
       res.end("Unauthorized");
       return true;

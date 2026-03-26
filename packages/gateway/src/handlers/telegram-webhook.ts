@@ -4,7 +4,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { ECSClient } from "@aws-sdk/client-ecs";
 
-import { KEY_PREFIX, UI_PROXY_PORT } from "@serverless-openclaw/shared";
+import { KEY_PREFIX, UI_PROXY_PORT, generateUiToken } from "@serverless-openclaw/shared";
 import { getTaskState, putTaskState, deleteTaskState } from "../services/task-state.js";
 import { routeMessage, savePendingMessage } from "../services/message.js";
 import { startTask } from "../services/container.js";
@@ -32,7 +32,7 @@ async function ensureTaskAndGetUiUrl(
 
   // Already running with a public IP — return URL immediately
   if (existing?.status === "Running" && existing.publicIp) {
-    return `http://${existing.publicIp}:${UI_PROXY_PORT}/ui?token=${bridgeAuthToken}`;
+    return `http://${existing.publicIp}:${UI_PROXY_PORT}/ui?token=${generateUiToken(bridgeAuthToken)}`;
   }
 
   // No task at all — start a new one
