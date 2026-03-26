@@ -27,8 +27,8 @@ import { WATCHDOG_INTERVAL_MINUTES } from "@serverless-openclaw/shared";
 import { SSM_PARAMS, SSM_SECRETS } from "./ssm-params.js";
 
 export interface ApiStackProps extends cdk.StackProps {
-  vpc: ec2.IVpc;
-  fargateSecurityGroup: ec2.ISecurityGroup;
+  vpc?: ec2.IVpc;
+  fargateSecurityGroup?: ec2.ISecurityGroup;
   conversationsTable: dynamodb.ITable;
   settingsTable: dynamodb.ITable;
   taskStateTable: dynamodb.ITable;
@@ -51,18 +51,30 @@ export class ApiStack extends cdk.Stack {
     const monorepoRoot = path.join(__dirname, "..", "..", "..", "..");
     const handlersDir = path.join(monorepoRoot, "packages", "gateway", "src", "handlers");
 
-    // Read compute resources from SSM (decoupled from ComputeStack)
-    const taskDefArn = ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.TASK_DEFINITION_ARN);
-    const taskRoleArn = ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.TASK_ROLE_ARN);
-    const executionRoleArn = ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.EXECUTION_ROLE_ARN);
-    const clusterArn = ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.CLUSTER_ARN);
-
     // Common environment variables for Lambda functions
-    const subnetIds = props.vpc.publicSubnets.map((s) => s.subnetId).join(",");
-    const securityGroupIds = props.fargateSecurityGroup.securityGroupId;
-
-    // Lambda agent ARN from SSM (Phase 2)
     const agentRuntime = props.agentRuntime ?? "fargate";
+    const fargateEnabled = agentRuntime !== "lambda";
+
+    let subnetIds = "";
+    let securityGroupIds = "";
+    if (fargateEnabled && props.vpc && props.fargateSecurityGroup) {
+      subnetIds = props.vpc.publicSubnets.map((s) => s.subnetId).join(",");
+      securityGroupIds = props.fargateSecurityGroup.securityGroupId;
+    }
+
+    // Read Fargate compute resources from SSM — only when ComputeStack is deployed
+    const taskDefArn = fargateEnabled
+      ? ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.TASK_DEFINITION_ARN)
+      : "";
+    const taskRoleArn = fargateEnabled
+      ? ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.TASK_ROLE_ARN)
+      : "";
+    const executionRoleArn = fargateEnabled
+      ? ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.EXECUTION_ROLE_ARN)
+      : "";
+    const clusterArn = fargateEnabled
+      ? ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.CLUSTER_ARN)
+      : "";
     const lambdaAgentEnabled = agentRuntime === "lambda" || agentRuntime === "both";
     const lambdaAgentFunctionArn = lambdaAgentEnabled
       ? ssm.StringParameter.valueForStringParameter(this, SSM_PARAMS.LAMBDA_AGENT_FUNCTION_ARN)
@@ -74,10 +86,14 @@ export class ApiStack extends cdk.Stack {
       TASK_STATE_TABLE: props.taskStateTable.tableName,
       CONNECTIONS_TABLE: props.connectionsTable.tableName,
       PENDING_MESSAGES_TABLE: props.pendingMessagesTable.tableName,
-      ECS_CLUSTER_ARN: clusterArn,
-      TASK_DEFINITION_ARN: taskDefArn,
-      SUBNET_IDS: subnetIds,
-      SECURITY_GROUP_IDS: securityGroupIds,
+      ...(fargateEnabled
+        ? {
+            ECS_CLUSTER_ARN: clusterArn,
+            TASK_DEFINITION_ARN: taskDefArn,
+            SUBNET_IDS: subnetIds,
+            SECURITY_GROUP_IDS: securityGroupIds,
+          }
+        : {}),
       AGENT_RUNTIME: agentRuntime,
       LAMBDA_AGENT_FUNCTION_ARN: lambdaAgentFunctionArn,
     };
@@ -225,34 +241,33 @@ export class ApiStack extends cdk.Stack {
       }
     }
 
-    // ECS + EC2 permissions for functions that need container management
-    const containerFunctions = [wsMessageFn, telegramWebhookFn, watchdogFn, prewarmFn];
-    for (const fn of containerFunctions) {
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: [
-            "ecs:RunTask",
-            "ecs:StopTask",
-            "ecs:DescribeTasks",
-          ],
-          resources: ["*"],
-        }),
-      );
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["ec2:DescribeNetworkInterfaces"],
-          resources: ["*"],
-        }),
-      );
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["iam:PassRole"],
-          resources: [
-            taskRoleArn,
-            executionRoleArn,
-          ],
-        }),
-      );
+    // ECS + EC2 permissions for functions that need container management (Fargate only)
+    if (fargateEnabled) {
+      const containerFunctions = [wsMessageFn, telegramWebhookFn, watchdogFn, prewarmFn];
+      for (const fn of containerFunctions) {
+        fn.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: [
+              "ecs:RunTask",
+              "ecs:StopTask",
+              "ecs:DescribeTasks",
+            ],
+            resources: ["*"],
+          }),
+        );
+        fn.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ["ec2:DescribeNetworkInterfaces"],
+            resources: ["*"],
+          }),
+        );
+        fn.addToRolePolicy(
+          new iam.PolicyStatement({
+            actions: ["iam:PassRole"],
+            resources: [taskRoleArn, executionRoleArn],
+          }),
+        );
+      }
     }
 
     // Lambda agent invoke permission (Phase 2)
@@ -312,7 +327,8 @@ export class ApiStack extends cdk.Stack {
     }
 
     // Grant execute-api:ManageConnections for WebSocket push
-    for (const fn of containerFunctions) {
+    const wsCallbackFunctions = [wsMessageFn, telegramWebhookFn, watchdogFn, prewarmFn];
+    for (const fn of wsCallbackFunctions) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           actions: ["execute-api:ManageConnections"],
