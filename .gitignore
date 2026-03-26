@@ -21,12 +21,21 @@ slides/*.pdf
 # IDE
 .idea/
 .vscode/
+.kiro/
+.claude/
 *.swp
 *.swo
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
 
 # References (cloned repos for study)
 references/
