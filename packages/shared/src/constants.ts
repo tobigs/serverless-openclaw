@@ -20,6 +20,7 @@ export const KEY_PREFIX = {
 export const BRIDGE_PORT = 8080;
 export const BRIDGE_HTTP_TIMEOUT_MS = 3000;
 export const GATEWAY_PORT = 18789;
+export const UI_PROXY_PORT = 8443;
 
 // Timeouts (ms)
 export const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;

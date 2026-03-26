@@ -1,7 +1,7 @@
 import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import type { Construct } from "constructs";
-import { BRIDGE_PORT } from "@serverless-openclaw/shared";
+import { BRIDGE_PORT, UI_PROXY_PORT } from "@serverless-openclaw/shared";
 
 export class NetworkStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
@@ -44,6 +44,12 @@ export class NetworkStack extends cdk.Stack {
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(BRIDGE_PORT),
       "Allow Bridge HTTP traffic (Bearer token auth)",
+    );
+
+    this.fargateSecurityGroup.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(UI_PROXY_PORT),
+      "Allow UI proxy HTTP traffic (cookie auth)",
     );
 
     // Outputs

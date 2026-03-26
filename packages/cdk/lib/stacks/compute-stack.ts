@@ -8,7 +8,7 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
-import { BRIDGE_PORT, TABLE_NAMES } from "@serverless-openclaw/shared";
+import { BRIDGE_PORT, UI_PROXY_PORT, TABLE_NAMES } from "@serverless-openclaw/shared";
 import { SSM_PARAMS, SSM_SECRETS } from "./ssm-params.js";
 
 export interface ComputeStackProps extends cdk.StackProps {
@@ -85,7 +85,7 @@ export class ComputeStack extends cdk.Stack {
 
     this.taskDefinition.addContainer("openclaw", {
       image: ecs.ContainerImage.fromEcrRepository(props.ecrRepository, "latest"),
-      portMappings: [{ containerPort: BRIDGE_PORT }],
+      portMappings: [{ containerPort: BRIDGE_PORT }, { containerPort: UI_PROXY_PORT }],
       environment: {
         CONVERSATIONS_TABLE: TABLE_NAMES.CONVERSATIONS,
         SETTINGS_TABLE: TABLE_NAMES.SETTINGS,

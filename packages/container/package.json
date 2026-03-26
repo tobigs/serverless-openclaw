@@ -18,10 +18,12 @@
     "@aws-sdk/lib-dynamodb": "^3.700.0",
     "@serverless-openclaw/shared": "*",
     "express": "^5.1.0",
+    "http-proxy": "^1.18.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/http-proxy": "^1.17.0",
     "@types/supertest": "^6.0.0",
     "@types/ws": "^8.5.0",
     "supertest": "^7.0.0"

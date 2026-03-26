@@ -52,7 +52,7 @@ RUN chmod +x /app/start-openclaw.sh && \
 
 USER openclaw
 
-EXPOSE 8080
+EXPOSE 8080 8443
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:8080/health || exit 1

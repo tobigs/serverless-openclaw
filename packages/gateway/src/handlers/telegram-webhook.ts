@@ -4,9 +4,11 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { ECSClient } from "@aws-sdk/client-ecs";
 
+import { KEY_PREFIX, UI_PROXY_PORT } from "@serverless-openclaw/shared";
 import { getTaskState, putTaskState, deleteTaskState } from "../services/task-state.js";
 import { routeMessage, savePendingMessage } from "../services/message.js";
 import { startTask } from "../services/container.js";
+import type { StartTaskParams } from "../services/container.js";
 import { sendTelegramMessage } from "../services/telegram.js";
 import { resolveUserId, verifyOtpAndLink } from "../services/identity.js";
 import { resolveSecrets } from "../services/secrets.js";
@@ -18,6 +20,46 @@ const ecs = new ECSClient({});
 const dynamoSend = ddb.send.bind(ddb) as (cmd: any) => Promise<any>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ecsSend = ecs.send.bind(ecs) as (cmd: any) => Promise<any>;
+
+async function ensureTaskAndGetUiUrl(
+  dynamoSend: (cmd: unknown) => Promise<unknown>,
+  ecsSend: (cmd: unknown) => Promise<unknown>,
+  userId: string,
+  bridgeAuthToken: string,
+  startTaskParams: StartTaskParams,
+): Promise<string | null> {
+  const existing = await getTaskState(dynamoSend, userId);
+
+  // Already running with a public IP — return URL immediately
+  if (existing?.status === "Running" && existing.publicIp) {
+    return `http://${existing.publicIp}:${UI_PROXY_PORT}/ui?token=${bridgeAuthToken}`;
+  }
+
+  // No task at all — start a new one
+  if (!existing) {
+    const taskArn = await startTask(ecsSend, startTaskParams);
+    await putTaskState(dynamoSend, {
+      PK: `${KEY_PREFIX.USER}${userId}`,
+      taskArn,
+      status: "Starting",
+      startedAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+    });
+  }
+  // If Starting, just wait for it (fall through to polling)
+
+  // Poll for Running + publicIp, every 3s up to 90s
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const state = await getTaskState(dynamoSend, userId);
+    if (state?.status === "Running" && state.publicIp) {
+      return `http://${state.publicIp}:${UI_PROXY_PORT}/ui?token=${bridgeAuthToken}`;
+    }
+  }
+
+  return null;
+}
 
 interface TelegramUpdate {
   message?: {
@@ -115,6 +157,74 @@ export async function handler(event: {
         "Unlinking is only available from the Web UI settings.",
       );
     }
+    return { statusCode: 200, body: "OK" };
+  }
+
+  // Handle /ui command
+  if (text === "/ui") {
+    const agentRuntime =
+      (process.env.AGENT_RUNTIME as "lambda" | "fargate" | "both") ?? "fargate";
+    console.log("[telegram] /ui command received", { telegramId, agentRuntime });
+
+    if (agentRuntime === "lambda") {
+      if (botToken) {
+        await sendTelegramMessage(
+          fetch as never,
+          botToken,
+          connectionId,
+          "The web UI is only available in Fargate mode.",
+        );
+      }
+      return { statusCode: 200, body: "OK" };
+    }
+
+    // Resolve userId for task lookup (same as main flow)
+    const uiUserId = await resolveUserId(dynamoSend, rawUserId);
+
+    if (botToken) {
+      await sendTelegramMessage(fetch as never, botToken, connectionId, "🖥️ Preparing UI...");
+    }
+
+    const bridgeAuthToken = secrets.get(process.env.SSM_BRIDGE_AUTH_TOKEN!) ?? "";
+    const taskEnvUi = [
+      { name: "USER_ID", value: uiUserId },
+      { name: "CALLBACK_URL", value: process.env.WEBSOCKET_CALLBACK_URL ?? "" },
+    ];
+    if (uiUserId !== rawUserId) {
+      taskEnvUi.push({ name: "TELEGRAM_CHAT_ID", value: String(chatId) });
+    }
+
+    try {
+      const url = await ensureTaskAndGetUiUrl(dynamoSend, ecsSend, uiUserId, bridgeAuthToken, {
+        cluster: process.env.ECS_CLUSTER_ARN ?? "",
+        taskDefinition: process.env.TASK_DEFINITION_ARN ?? "",
+        subnets: (process.env.SUBNET_IDS ?? "").split(","),
+        securityGroups: (process.env.SECURITY_GROUP_IDS ?? "").split(","),
+        containerName: "openclaw",
+        environment: taskEnvUi,
+      });
+      if (url && botToken) {
+        await sendTelegramMessage(fetch as never, botToken, connectionId, url);
+      } else if (botToken) {
+        await sendTelegramMessage(
+          fetch as never,
+          botToken,
+          connectionId,
+          "❌ Could not start the UI. Please try again.",
+        );
+      }
+    } catch (err) {
+      console.error("[telegram] /ui command failed", { userId: uiUserId, error: err });
+      if (botToken) {
+        await sendTelegramMessage(
+          fetch as never,
+          botToken,
+          connectionId,
+          "❌ Could not start the UI. Please try again.",
+        );
+      }
+    }
+
     return { statusCode: 200, body: "OK" };
   }
 

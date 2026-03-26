@@ -1,4 +1,5 @@
-import { BRIDGE_PORT } from "@serverless-openclaw/shared";
+import { BRIDGE_PORT, UI_PROXY_PORT, GATEWAY_PORT } from "@serverless-openclaw/shared";
+import { createUiProxy, type UiProxyServer } from "./ui-proxy.js";
 import { createApp } from "./bridge.js";
 import { CallbackSender } from "./callback-sender.js";
 import { OpenClawClient } from "./openclaw-client.js";
@@ -93,6 +94,20 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     s3Prefix: `workspaces/${userId}`,
     workspacePath: "/data/workspace",
   });
+
+  // UI Proxy start (non-critical)
+  let uiProxy: UiProxyServer | undefined;
+  try {
+    uiProxy = createUiProxy({
+      bridgeAuthToken: env.BRIDGE_AUTH_TOKEN,
+      lifecycle,
+      targetPort: GATEWAY_PORT,
+    });
+    await uiProxy.listen(UI_PROXY_PORT, "0.0.0.0");
+    console.log(`UI proxy listening on port ${UI_PROXY_PORT}`);
+  } catch (err) {
+    console.error("UI proxy failed to start (non-fatal):", err);
+  }
 
   // Phase 3: Bridge server start
   const app = createApp({
@@ -191,6 +206,11 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   // SIGTERM handler
   process.on("SIGTERM", () => {
     console.log("SIGTERM received, shutting down gracefully...");
+    if (uiProxy) {
+      uiProxy.close().catch((err) => {
+        console.error("UI proxy close error:", err);
+      });
+    }
     server.close(async () => {
       await lifecycle.gracefulShutdown();
       openclawClient.close();
