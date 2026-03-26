@@ -158,6 +158,17 @@ npx cdk deploy WebStack --profile $AWS_PROFILE
 npx cdk deploy MonitoringStack --profile $AWS_PROFILE
 ```
 
+### Telegram-only Deployment (no Web UI)
+
+Set `DEPLOY_WEB=false` to skip WebStack and the web asset build entirely. Useful when only Telegram bot functionality is needed, saving build time and CloudFront costs.
+
+```bash
+make deploy-telegram
+# equivalent to: DEPLOY_WEB=false npx cdk deploy --all ...
+```
+
+MonitoringStack and ApiStack handle a missing WebStack gracefully.
+
 ### Push Docker Image
 
 To run the Fargate container, you need to push a Docker image to ECR.
@@ -266,6 +277,17 @@ VITE_API_URL=<ApiStack.HttpApiEndpoint>
 VITE_COGNITO_USER_POOL_ID=<AuthStack.UserPoolId>
 VITE_COGNITO_CLIENT_ID=<AuthStack.UserPoolClientId>
 ```
+
+### Deploy-time Feature Flags
+
+Set in `.env` or exported before running CDK commands.
+
+| Variable | Default | Values | Purpose |
+|----------|---------|--------|---------|
+| `AGENT_RUNTIME` | `fargate` | `fargate` \| `lambda` \| `both` | Compute path selection |
+| `AI_PROVIDER` | `anthropic` | `anthropic` \| `bedrock` | AI provider selection |
+| `AI_MODEL` | _(provider default)_ | any model ID | Override default model |
+| `DEPLOY_WEB` | `true` | `true` \| `false` | Include WebStack deployment |
 
 ---
 
