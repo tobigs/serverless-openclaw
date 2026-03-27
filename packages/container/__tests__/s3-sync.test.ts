@@ -214,4 +214,30 @@ describe("backupToS3", () => {
 
     expect(mockS3Send).not.toHaveBeenCalled();
   });
+
+  it("should skip excluded directories during backup", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readdirSync)
+      .mockReturnValueOnce(
+        [
+          { name: "agents", isDirectory: () => true, isFile: () => false },
+          { name: "skills", isDirectory: () => true, isFile: () => false },
+          { name: "openclaw.json", isDirectory: () => false, isFile: () => true },
+        ] as unknown as ReturnType<typeof fs.readdirSync>,
+      )
+      .mockReturnValueOnce(
+        [{ name: "SKILL.md", isDirectory: () => false, isFile: () => true }] as unknown as ReturnType<typeof fs.readdirSync>,
+      );
+    vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("data"));
+
+    await backupToS3({
+      bucket: "test-bucket",
+      prefix: "openclaw-home/user1",
+      localPath: "/home/openclaw/.openclaw",
+      excludeDirs: ["agents"],
+    });
+
+    // Should upload openclaw.json + skills/SKILL.md = 2, skipping agents/
+    expect(mockS3Send).toHaveBeenCalledTimes(2);
+  });
 });

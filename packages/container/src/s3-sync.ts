@@ -12,6 +12,8 @@ interface S3SyncParams {
   prefix: string;
   localPath: string;
   region?: string;
+  /** Directory names to exclude from backup (e.g., ["agents"] to skip sessions) */
+  excludeDirs?: string[];
 }
 
 export async function restoreFromS3(params: S3SyncParams): Promise<void> {
@@ -69,6 +71,7 @@ export async function backupToS3(params: S3SyncParams): Promise<void> {
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
       if (entry.isDirectory()) {
+        if (params.excludeDirs?.includes(entry.name)) continue;
         await uploadDir(fullPath, `${s3Prefix}/${entry.name}`);
       } else if (entry.isFile()) {
         const body = fs.readFileSync(fullPath);

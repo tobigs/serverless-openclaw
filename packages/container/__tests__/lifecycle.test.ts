@@ -133,3 +133,69 @@ describe("LifecycleManager", () => {
     });
   });
 });
+
+describe("LifecycleManager with openclawHome", () => {
+  let lifecycle: LifecycleManager;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    mockDynamoSend.mockResolvedValue({});
+
+    lifecycle = new LifecycleManager({
+      dynamoSend: mockDynamoSend,
+      userId: "user-123",
+      taskArn: "arn:aws:ecs:us-east-1:123456:task/my-cluster/abc123",
+      s3Bucket: "my-backup-bucket",
+      s3Prefix: "backups/user-123",
+      workspacePath: "/data/workspace",
+      openclawHome: "/home/openclaw/.openclaw",
+    });
+  });
+
+  afterEach(() => {
+    lifecycle.stopPeriodicBackup();
+    vi.useRealTimers();
+  });
+
+  it("should backup openclaw home (excluding agents dir) to S3", async () => {
+    await lifecycle.backupToS3();
+
+    expect(s3Sync.backupToS3).toHaveBeenCalledWith({
+      bucket: "my-backup-bucket",
+      prefix: "openclaw-home/user-123",
+      localPath: "/home/openclaw/.openclaw",
+      excludeDirs: ["agents"],
+    });
+  });
+
+  it("should backup sessions to unified S3 path", async () => {
+    await lifecycle.backupToS3();
+
+    expect(s3Sync.backupToS3).toHaveBeenCalledWith({
+      bucket: "my-backup-bucket",
+      prefix: "sessions/user-123/agents/default/sessions",
+      localPath: "/home/openclaw/.openclaw/agents/default/sessions",
+    });
+  });
+
+  it("should restore openclaw home from S3", async () => {
+    await lifecycle.restoreOpenclawHomeFromS3();
+
+    expect(s3Sync.restoreFromS3).toHaveBeenCalledWith({
+      bucket: "my-backup-bucket",
+      prefix: "openclaw-home/user-123",
+      localPath: "/home/openclaw/.openclaw",
+    });
+  });
+
+  it("should restore sessions from S3", async () => {
+    await lifecycle.restoreSessionsFromS3();
+
+    expect(s3Sync.restoreFromS3).toHaveBeenCalledWith({
+      bucket: "my-backup-bucket",
+      prefix: "sessions/user-123/agents/default/sessions",
+      localPath: "/home/openclaw/.openclaw/agents/default/sessions",
+    });
+  });
+});

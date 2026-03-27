@@ -5,6 +5,7 @@ import {
   PERIODIC_BACKUP_INTERVAL_MS,
   SESSION_S3_PREFIX,
   SESSION_DEFAULT_AGENT,
+  OPENCLAW_HOME_S3_PREFIX,
 } from "@serverless-openclaw/shared";
 import type { TaskStatus } from "@serverless-openclaw/shared";
 import { backupToS3, restoreFromS3 } from "./s3-sync.js";
@@ -66,13 +67,20 @@ export class LifecycleManager {
       prefix: this.deps.s3Prefix,
       localPath: this.deps.workspacePath,
     });
-    // Sync OpenClaw sessions to unified S3 path (shared with Lambda agent)
     if (this.deps.openclawHome) {
+      // Sync sessions to unified S3 path (shared with Lambda agent)
       const sessionsLocalPath = `${this.deps.openclawHome}/agents/${SESSION_DEFAULT_AGENT}/sessions`;
       await backupToS3({
         bucket: this.deps.s3Bucket,
         prefix: `${SESSION_S3_PREFIX}/${this.deps.userId}/agents/${SESSION_DEFAULT_AGENT}/sessions`,
         localPath: sessionsLocalPath,
+      });
+      // Sync OpenClaw home (config, managed skills) — excludes sessions (synced above)
+      await backupToS3({
+        bucket: this.deps.s3Bucket,
+        prefix: `${OPENCLAW_HOME_S3_PREFIX}/${this.deps.userId}`,
+        localPath: this.deps.openclawHome,
+        excludeDirs: ["agents"],
       });
     }
   }
@@ -85,6 +93,16 @@ export class LifecycleManager {
       bucket: this.deps.s3Bucket,
       prefix: `${SESSION_S3_PREFIX}/${this.deps.userId}/agents/${SESSION_DEFAULT_AGENT}/sessions`,
       localPath: sessionsLocalPath,
+    });
+  }
+
+  /** Restore OpenClaw home (config, managed skills) from S3 — call before gateway starts */
+  async restoreOpenclawHomeFromS3(): Promise<void> {
+    if (!this.deps.openclawHome) return;
+    await restoreFromS3({
+      bucket: this.deps.s3Bucket,
+      prefix: `${OPENCLAW_HOME_S3_PREFIX}/${this.deps.userId}`,
+      localPath: this.deps.openclawHome,
     });
   }
 

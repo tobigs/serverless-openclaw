@@ -41,13 +41,19 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   const telegramChatId = env.TELEGRAM_CHAT_ID ?? getTelegramChatId(userId);
   const channel: Channel = telegramChatId ? "telegram" : "web";
   const gatewayUrl = `ws://localhost:${18789}`;
+  const openclawHome = "/home/openclaw/.openclaw";
 
-  // Phase 1: Parallel — S3 restore and history load are independent
-  const [, history] = await Promise.all([
+  // Phase 1: Parallel — S3 restore (workspace + openclaw home) and history load
+  const [, , history] = await Promise.all([
     restoreFromS3({
       bucket: env.DATA_BUCKET,
       prefix: `workspaces/${userId}`,
       localPath: "/data/workspace",
+    }),
+    restoreFromS3({
+      bucket: env.DATA_BUCKET,
+      prefix: `openclaw-home/${userId}`,
+      localPath: openclawHome,
     }),
     loadRecentHistory(dynamoSend, userId),
   ]);
@@ -92,6 +98,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     s3Bucket: env.DATA_BUCKET,
     s3Prefix: `workspaces/${userId}`,
     workspacePath: "/data/workspace",
+    openclawHome,
   });
 
   // Phase 3: Bridge server start
