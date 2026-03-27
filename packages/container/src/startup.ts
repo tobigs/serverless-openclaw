@@ -195,14 +195,15 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
 
   lifecycle.startPeriodicBackup();
 
-  // SIGTERM handler
+  // SIGTERM handler — run backup immediately, don't wait for connections to drain
   process.on("SIGTERM", () => {
     console.log("SIGTERM received, shutting down gracefully...");
-    server.close(async () => {
+    void (async () => {
       await lifecycle.gracefulShutdown();
+      server.close();
       openclawClient.close();
       process.exit(0);
-    });
+    })();
   });
 
 }
