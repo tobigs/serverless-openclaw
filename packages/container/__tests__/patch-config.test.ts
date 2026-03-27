@@ -53,7 +53,7 @@ describe("patchConfig", () => {
       mockedFs.writeFileSync.mock.calls[0][1] as string,
     );
     expect(written.auth.token).toBeUndefined();
-    expect(written.llm.apiKey).toBeUndefined();
+    expect(written.llm).toBeUndefined();
     expect(written.telegram).toBeUndefined();
   });
 
@@ -66,10 +66,10 @@ describe("patchConfig", () => {
     const written = JSON.parse(
       mockedFs.writeFileSync.mock.calls[0][1] as string,
     );
-    expect(written.llm.model).toBe("claude-sonnet");
+    expect(written.agents.defaults.model.primary).toBe("anthropic/claude-sonnet");
   });
 
-  it("should keep LLM model unchanged when no override provided", () => {
+  it("should not set agents.defaults.model when no provider or model provided", () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
     mockedFs.writeFileSync.mockImplementation(() => {});
 
@@ -78,7 +78,8 @@ describe("patchConfig", () => {
     const written = JSON.parse(
       mockedFs.writeFileSync.mock.calls[0][1] as string,
     );
-    expect(written.llm.model).toBe("gpt-4");
+    expect(written.llm).toBeUndefined();
+    expect(written.agents?.defaults?.model).toBeUndefined();
   });
 
   it("should read from and write to the correct path", () => {
@@ -252,6 +253,6 @@ describe("patchConfig", () => {
       mockedFs.writeFileSync.mock.calls[0][1] as string,
     );
     expect(written.models.bedrockDiscovery.enabled).toBe(false);
-    expect(written.llm.provider).toBe("amazon-bedrock");
+    expect(written.agents.defaults.model.primary).toMatch(/^amazon-bedrock[/]/);
   });
 });

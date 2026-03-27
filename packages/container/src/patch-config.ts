@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { GATEWAY_PORT } from "@serverless-openclaw/shared";
+import { GATEWAY_PORT, resolveProviderConfig } from "@serverless-openclaw/shared";
 import type { AiProvider } from "@serverless-openclaw/shared";
 
 interface PatchOptions {
@@ -21,47 +21,43 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     delete config.auth.token;
   }
 
+  // Remove legacy llm section — not a valid OpenClaw v2026+ key, may contain secrets
+  delete config.llm;
+
   // Remove Telegram section entirely (webhook-only, configured via env)
   delete config.telegram;
 
-  // Remove LLM secrets, optionally override model
-  config.llm = { ...config.llm };
-  delete config.llm.apiKey;
-  if (options?.llmModel) {
-    config.llm.model = options.llmModel;
-  }
+  // Disable Bedrock model discovery — model is set explicitly, discovery scans ~56s
+  config.models = {
+    ...config.models,
+    bedrockDiscovery: { enabled: false },
+  };
 
   if (options?.aiProvider === "bedrock") {
-    // Configure LLM for Bedrock
-    config.llm.provider = "amazon-bedrock";
-    config.llm.api = "bedrock-converse-stream";
-    delete config.llm.apiKey;
-
-    // Disable Bedrock discovery — model is resolved explicitly via AI_MODEL env var.
-    // Discovery scans all models (~56s) and causes silent timeouts on Fargate.
-    config.models = {
-      ...config.models,
-      bedrockDiscovery: { enabled: false },
-    };
-
-    // OpenClaw EC2/Fargate workaround — signal that credentials are available via SDK chain
+    // Signal that AWS credentials are available via SDK chain (EC2/Fargate IAM role)
     process.env.AWS_PROFILE = "default";
-  } else {
-    // Anthropic or unset — disable Bedrock discovery
-    config.models = {
-      ...config.models,
-      bedrockDiscovery: { enabled: false },
-    };
   }
 
-  // Set agent workspace path so OpenClaw discovers skills and writes files there
-  if (options?.workspacePath) {
-    const agents = (config.agents ?? {}) as Record<string, unknown>;
-    const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
-    defaults.workspace = options.workspacePath;
-    agents.defaults = defaults;
-    config.agents = agents;
+  // Set agent defaults (model and workspace)
+  const agents = (config.agents ?? {}) as Record<string, unknown>;
+  const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
+
+  // Set model in OpenClaw's provider/model format (e.g. "amazon-bedrock/eu.anthropic...")
+  if (options?.aiProvider || options?.llmModel) {
+    const providerConfig = resolveProviderConfig({
+      AI_PROVIDER: options.aiProvider,
+      AI_MODEL: options.llmModel,
+      AWS_REGION: options.awsRegion,
+    });
+    defaults.model = { primary: `${providerConfig.openclawProvider}/${providerConfig.defaultModel}` };
   }
+
+  if (options?.workspacePath) {
+    defaults.workspace = options.workspacePath;
+  }
+
+  agents.defaults = defaults;
+  config.agents = agents;
 
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
