@@ -238,4 +238,20 @@ describe("patchConfig", () => {
     );
     expect(written.agents.defaults.workspace).toBe("/data/workspace");
   });
+
+  it("should disable bedrockDiscovery even when aiProvider is bedrock", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      awsRegion: "us-east-1",
+    });
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.models.bedrockDiscovery.enabled).toBe(false);
+    expect(written.llm.provider).toBe("amazon-bedrock");
+  });
 });

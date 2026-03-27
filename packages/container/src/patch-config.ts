@@ -37,10 +37,11 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     config.llm.api = "bedrock-converse-stream";
     delete config.llm.apiKey;
 
-    // Enable Bedrock model discovery
+    // Disable Bedrock discovery — model is resolved explicitly via AI_MODEL env var.
+    // Discovery scans all models (~56s) and causes silent timeouts on Fargate.
     config.models = {
       ...config.models,
-      bedrockDiscovery: { enabled: true, region: options.awsRegion },
+      bedrockDiscovery: { enabled: false },
     };
 
     // OpenClaw EC2/Fargate workaround — signal that credentials are available via SDK chain
