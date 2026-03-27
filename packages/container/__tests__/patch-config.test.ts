@@ -256,3 +256,78 @@ describe("patchConfig", () => {
     expect(written.agents.defaults.model.primary).toMatch(/^amazon-bedrock[/]/);
   });
 });
+
+describe("MCP server auto-configuration", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it("should inject brave-search when BRAVE_API_KEY is set", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { mcpEnv: { BRAVE_API_KEY: "test-key" } });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.mcpServers["brave-search"]).toMatchObject({
+      command: "npx",
+      env: { BRAVE_API_KEY: "test-key" },
+    });
+  });
+
+  it("should inject github when GITHUB_TOKEN is set", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { mcpEnv: { GITHUB_TOKEN: "ghp_test" } });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.mcpServers["github"]).toMatchObject({
+      command: "npx",
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_test" },
+    });
+  });
+
+  it("should not overwrite user-configured MCP server", () => {
+    const config = { ...BASE_CONFIG, mcpServers: { "brave-search": { command: "custom" } } };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(config));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { mcpEnv: { BRAVE_API_KEY: "should-not-override" } });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.mcpServers["brave-search"].command).toBe("custom");
+  });
+
+  it("should not inject servers when env vars are absent", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { mcpEnv: {} });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.mcpServers?.["brave-search"]).toBeUndefined();
+  });
+
+  it("should not inject server when env var is empty string", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { mcpEnv: { BRAVE_API_KEY: "" } });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.mcpServers?.["brave-search"]).toBeUndefined();
+  });
+
+  it("should merge auto-configured servers with user-configured ones", () => {
+    const config = { ...BASE_CONFIG, mcpServers: { trello: { command: "npx" } } };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(config));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { mcpEnv: { BRAVE_API_KEY: "brave-key" } });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.mcpServers["trello"]).toBeDefined();
+    expect(written.mcpServers["brave-search"]).toBeDefined();
+  });
+});

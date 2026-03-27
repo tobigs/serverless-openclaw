@@ -7,7 +7,36 @@ interface PatchOptions {
   aiProvider?: AiProvider;
   awsRegion?: string;
   workspacePath?: string;
+  /** Env vars for MCP server auto-configuration. Defaults to process.env. */
+  mcpEnv?: Record<string, string | undefined>;
 }
+
+interface McpServerDefinition {
+  envKey: string;
+  serverName: string;
+  build: (value: string) => Record<string, unknown>;
+}
+
+const MCP_SERVER_REGISTRY: McpServerDefinition[] = [
+  {
+    envKey: "BRAVE_API_KEY",
+    serverName: "brave-search",
+    build: (apiKey) => ({
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-brave-search"],
+      env: { BRAVE_API_KEY: apiKey },
+    }),
+  },
+  {
+    envKey: "GITHUB_TOKEN",
+    serverName: "github",
+    build: (token) => ({
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      env: { GITHUB_PERSONAL_ACCESS_TOKEN: token },
+    }),
+  },
+];
 
 export function patchConfig(configPath: string, options?: PatchOptions): void {
   const raw = readFileSync(configPath, "utf-8");
@@ -58,6 +87,18 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
 
   agents.defaults = defaults;
   config.agents = agents;
+
+  // Auto-configure known MCP servers from env vars (don't overwrite user-configured entries)
+  const mcpEnv = options?.mcpEnv ?? process.env;
+  const mcpServers = (config.mcpServers ?? {}) as Record<string, unknown>;
+  for (const def of MCP_SERVER_REGISTRY) {
+    const value = mcpEnv[def.envKey];
+    if (value && value.trim() !== "" && !mcpServers[def.serverName]) {
+      mcpServers[def.serverName] = def.build(value);
+      console.log(`[patch-config] Auto-configured MCP server: ${def.serverName}`);
+    }
+  }
+  config.mcpServers = mcpServers;
 
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 }

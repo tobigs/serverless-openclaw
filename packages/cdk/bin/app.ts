@@ -19,6 +19,9 @@ const agentRuntime = process.env.AGENT_RUNTIME ?? "fargate"; // default: backwar
 const aiProvider = process.env.AI_PROVIDER;
 const aiModel = process.env.AI_MODEL;
 const deployWeb = process.env.DEPLOY_WEB !== "false"; // default: true (deploy web)
+const mcpSecretNames = Object.keys(process.env)
+  .filter((k) => k.startsWith("MCP_SECRET_"))
+  .map((k) => k.replace(/^MCP_SECRET_/, ""));
 
 // Secrets (SSM SecureString parameters)
 const secrets = new SecretsStack(app, "SecretsStack", { aiProvider });
@@ -50,6 +53,7 @@ if (agentRuntime !== "lambda") {
     fargateMemory: process.env.FARGATE_MEMORY ? Number(process.env.FARGATE_MEMORY) : undefined,
     aiProvider,
     aiModel,
+    mcpSecretNames,
   });
   compute.addDependency(secrets);
 }

@@ -6,6 +6,8 @@ export const SSM_PARAMS = {
   LAMBDA_AGENT_FUNCTION_ARN: "/serverless-openclaw/lambda-agent/function-arn",
 } as const;
 
+export const MCP_SECRETS_PATH_PREFIX = "/serverless-openclaw/mcp-secrets";
+
 export const SSM_SECRETS = {
   BRIDGE_AUTH_TOKEN: "/serverless-openclaw/secrets/bridge-auth-token",
   OPENCLAW_GATEWAY_TOKEN: "/serverless-openclaw/secrets/openclaw-gateway-token",

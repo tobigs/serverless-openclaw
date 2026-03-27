@@ -11,7 +11,7 @@ USER_POOL  := ap-northeast-2_r6wLZ95dd
 CLIENT_ID  := 1hgp8h9jico924p1atcr2c9ki9
 CLUSTER    := serverless-openclaw
 
-.PHONY: help build test lint deploy-all deploy-telegram deploy-web deploy-image deploy-image-soci \
+.PHONY: help build test lint deploy-all deploy-telegram deploy-web deploy-image deploy-image-soci deploy-mcp-secrets \
         user-create user-password user-list user-delete \
         task-list task-status task-stop task-stop-recent task-logs task-clean \
         telegram-webhook telegram-status \
@@ -43,6 +43,22 @@ lint: ## Run linter
 
 deploy-all: web-build ## Deploy all CDK stacks + web
 	cd packages/cdk && npx cdk deploy --all --profile $(AWS_PROFILE) --require-approval never
+
+deploy-mcp-secrets: ## Upload MCP_SECRET_* vars from .env to SSM Parameter Store
+	@count=0; \
+	while IFS= read -r line || [ -n "$$line" ]; do \
+		case "$$line" in MCP_SECRET_*) ;; *) continue ;; esac; \
+		name=$$(echo "$$line" | cut -d= -f1 | sed 's/^MCP_SECRET_//'); \
+		value=$$(echo "$$line" | cut -d= -f2-); \
+		ssmname=$$(echo "$$name" | tr '[:upper:]' '[:lower:]' | tr '_' '-'); \
+		param="/serverless-openclaw/mcp-secrets/$$ssmname"; \
+		echo "  Storing $$param"; \
+		aws ssm put-parameter --name "$$param" --value "$$value" \
+			--type SecureString --overwrite \
+			--profile $(AWS_PROFILE) --region $(AWS_REGION) > /dev/null; \
+		count=$$((count + 1)); \
+	done < .env; \
+	echo "✅ $$count MCP secret(s) stored in SSM"
 
 deploy-stack: ## Deploy a specific stack (STACK=NetworkStack)
 	cd packages/cdk && npx cdk deploy $(STACK) --profile $(AWS_PROFILE) --require-approval never
