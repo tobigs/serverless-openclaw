@@ -6,6 +6,7 @@ interface PatchOptions {
   llmModel?: string;
   aiProvider?: AiProvider;
   awsRegion?: string;
+  workspacePath?: string;
 }
 
 export function patchConfig(configPath: string, options?: PatchOptions): void {
@@ -52,5 +53,29 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     };
   }
 
+  // Set agent workspace path so OpenClaw discovers skills and writes files there
+  if (options?.workspacePath) {
+    const agents = (config.agents ?? {}) as Record<string, unknown>;
+    const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
+    defaults.workspace = options.workspacePath;
+    agents.defaults = defaults;
+    config.agents = agents;
+  }
+
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+}
+
+// CLI entry point: node patch-config.js <configPath>
+if (process.argv[1]?.endsWith("patch-config.js")) {
+  const configPath = process.argv[2];
+  if (!configPath) {
+    console.error("Usage: node patch-config.js <configPath>");
+    process.exit(1);
+  }
+  const aiProvider = (process.env.AI_PROVIDER as AiProvider) ?? undefined;
+  const llmModel = process.env.AI_MODEL ?? undefined;
+  const awsRegion = process.env.AWS_REGION ?? undefined;
+  const workspacePath = process.env.OPENCLAW_WORKSPACE ?? "/data/workspace";
+  patchConfig(configPath, { aiProvider, llmModel, awsRegion, workspacePath });
+  console.log("[patch-config] Config patched successfully");
 }

@@ -40,6 +40,9 @@ export const SESSION_S3_PREFIX = "sessions";
 export const SESSION_DEFAULT_AGENT = "default";
 export const SESSION_DEFAULT_KEY = "main";
 
+// OpenClaw home S3 path (config, managed skills — shared between restarts)
+export const OPENCLAW_HOME_S3_PREFIX = "openclaw-home";
+
 // Workspace S3 paths (shared between Lambda and Fargate)
 export const WORKSPACE_S3_PREFIX = "workspaces";
 export const WORKSPACE_DEFAULT_ALLOWLIST = [

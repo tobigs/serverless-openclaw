@@ -181,16 +181,16 @@ describe("startContainer - parallel startup", () => {
 
   it("should run S3 restore and history load in parallel (both before gateway wait)", async () => {
     // Use delayed mocks to prove they start concurrently
-    let s3Resolve!: () => void;
+    const s3Resolvers: Array<() => void> = [];
     let historyResolve!: (v: never[]) => void;
 
     mockRestoreFromS3.mockImplementation(() => {
       callOrder.push("restoreFromS3:start");
       return new Promise<void>((r) => {
-        s3Resolve = () => {
+        s3Resolvers.push(() => {
           callOrder.push("restoreFromS3:end");
           r();
-        };
+        });
       });
     });
 
@@ -206,17 +206,17 @@ describe("startContainer - parallel startup", () => {
 
     const promise = startContainer(defaultOpts());
 
-    // Wait for both to start
+    // Wait for both S3 restores and history to start
     await vi.waitFor(() => {
-      expect(callOrder).toContain("restoreFromS3:start");
+      expect(callOrder.filter((c) => c === "restoreFromS3:start")).toHaveLength(2);
       expect(callOrder).toContain("loadRecentHistory:start");
     });
 
     // Gateway wait should NOT have been called yet (blocked by Promise.all)
     expect(callOrder).not.toContain("waitForPort");
 
-    // Resolve both
-    s3Resolve();
+    // Resolve all
+    for (const resolve of s3Resolvers) resolve();
     historyResolve([] as never[]);
 
     await promise;

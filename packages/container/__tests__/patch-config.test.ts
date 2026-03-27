@@ -110,4 +110,132 @@ describe("patchConfig", () => {
     );
     expect(written.gateway.port).toBe(18789);
   });
+
+  // --- New tests: preserve user-owned config keys ---
+
+  it("should preserve mcpServers from existing config", () => {
+    const configWithMcp = {
+      ...BASE_CONFIG,
+      mcpServers: {
+        trello: {
+          command: "npx",
+          args: ["-y", "trello-mcp-server"],
+          env: { TRELLO_API_KEY: "key123" },
+        },
+      },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithMcp));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.mcpServers).toEqual(configWithMcp.mcpServers);
+  });
+
+  it("should preserve skills configuration from existing config", () => {
+    const configWithSkills = {
+      ...BASE_CONFIG,
+      skills: {
+        enabled: ["trello-mcp", "calendar"],
+        disabled: ["browser"],
+      },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithSkills));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.skills).toEqual(configWithSkills.skills);
+  });
+
+  it("should preserve agents configuration from existing config", () => {
+    const configWithAgents = {
+      ...BASE_CONFIG,
+      agents: {
+        defaults: {
+          workspace: "/data/workspace",
+          model: "anthropic/claude-sonnet-4-20250514",
+        },
+      },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithAgents));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.agents).toEqual(configWithAgents.agents);
+  });
+
+  it("should preserve gateway.host while overriding gateway.port", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.gateway.port).toBe(18789);
+    expect(written.gateway.host).toBe("0.0.0.0");
+  });
+
+  it("should preserve gateway.controlUi settings", () => {
+    const configWithControlUi = {
+      ...BASE_CONFIG,
+      gateway: {
+        ...BASE_CONFIG.gateway,
+        controlUi: { dangerouslyDisableDeviceAuth: true },
+      },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithControlUi));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.gateway.controlUi).toEqual({
+      dangerouslyDisableDeviceAuth: true,
+    });
+  });
+
+  it("should preserve unknown top-level keys (future-proof)", () => {
+    const configWithUnknown = {
+      ...BASE_CONFIG,
+      customSection: { foo: "bar" },
+      anotherSection: [1, 2, 3],
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithUnknown));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.customSection).toEqual({ foo: "bar" });
+    expect(written.anotherSection).toEqual([1, 2, 3]);
+  });
+
+  it("should set workspace path when provided", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { workspacePath: "/data/workspace" });
+
+    const written = JSON.parse(
+      mockedFs.writeFileSync.mock.calls[0][1] as string,
+    );
+    expect(written.agents.defaults.workspace).toBe("/data/workspace");
+  });
 });
