@@ -9,7 +9,7 @@ export interface ProviderConfig {
 }
 
 // Base Bedrock model ID (without CRIS prefix)
-export const BEDROCK_BASE_MODEL = "anthropic.claude-sonnet-4-20250514-v1:0";
+export const BEDROCK_BASE_MODEL = "anthropic.claude-sonnet-4-6";
 
 // Maps AWS region → cross-region inference system (CRIS) geographic prefix.
 // Bedrock uses these prefixes to route requests within a geographic boundary.
@@ -49,7 +49,7 @@ export const PROVIDER_DEFAULTS = {
     openclawProvider: "anthropic",
     openclawApi: "anthropic",
     openclawAuth: "api-key",
-    defaultModel: "claude-sonnet-4-20250514",
+    defaultModel: "claude-sonnet-4-6",
   },
   bedrock: {
     openclawProvider: "amazon-bedrock",

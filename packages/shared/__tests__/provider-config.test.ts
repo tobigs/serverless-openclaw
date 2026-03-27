@@ -132,7 +132,7 @@ describe("resolveProviderConfig", () => {
     const config = resolveProviderConfig({ AI_PROVIDER: "anthropic" });
     expect(config.openclawProvider).toBe("anthropic");
     expect(config.openclawApi).toBe("anthropic");
-    expect(config.defaultModel).toBe("claude-sonnet-4-20250514");
+    expect(config.defaultModel).toBe("claude-sonnet-4-6");
   });
 
   it("applies AI_MODEL override for anthropic", () => {
