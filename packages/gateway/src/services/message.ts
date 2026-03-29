@@ -17,7 +17,10 @@ import type { StartTaskParams } from "./container.js";
 import type { InvokeLambdaAgentParams } from "./lambda-agent.js";
 import { classifyRoute, stripRouteHint } from "./route-classifier.js";
 
-type FetchFn = (url: string, init: RequestInit) => Promise<{ ok: boolean; status: number; statusText: string }>;
+type FetchFn = (
+  url: string,
+  init: RequestInit,
+) => Promise<{ ok: boolean; status: number; statusText: string }>;
 type Send = (command: unknown) => Promise<unknown>;
 
 export async function sendToBridge(
@@ -41,10 +44,7 @@ export async function sendToBridge(
   }
 }
 
-export async function savePendingMessage(
-  send: Send,
-  item: PendingMessageItem,
-): Promise<void> {
+export async function savePendingMessage(send: Send, item: PendingMessageItem): Promise<void> {
   await send(
     new PutCommand({
       TableName: TABLE_NAMES.PENDING_MESSAGES,
@@ -74,11 +74,15 @@ export interface RouteDeps {
   sessionId?: string;
   /** Called with agent payloads after a successful lambda invocation — caller is responsible for delivery */
   onLambdaResponse?: (payloads: LambdaAgentResponse["payloads"]) => Promise<void>;
+  onColdStartPreview?: (previewText: string) => Promise<void>;
 }
 
 export type RouteResult = "sent" | "queued" | "started" | "lambda";
 
-async function routeFargate(deps: RouteDeps, taskState: TaskStateItem | null): Promise<RouteResult> {
+async function routeFargate(
+  deps: RouteDeps,
+  taskState: TaskStateItem | null,
+): Promise<RouteResult> {
   if (taskState?.status === "Running" && taskState.publicIp) {
     try {
       await sendToBridge(deps.fetchFn, taskState.publicIp, deps.bridgeAuthToken, {
@@ -90,7 +94,10 @@ async function routeFargate(deps: RouteDeps, taskState: TaskStateItem | null): P
       });
       return "sent";
     } catch (err) {
-      console.warn(`Bridge unreachable at ${taskState.publicIp}, falling back to pending queue`, err);
+      console.warn(
+        `Bridge unreachable at ${taskState.publicIp}, falling back to pending queue`,
+        err,
+      );
     }
   }
 
@@ -155,13 +162,37 @@ async function routeFargate(deps: RouteDeps, taskState: TaskStateItem | null): P
   return "queued";
 }
 
+/**
+ * Invoke Lambda with disableTools=true for a quick contextual preview
+ * while Fargate container cold starts. Non-blocking (fire-and-forget).
+ */
+async function invokeColdStartPreview(deps: RouteDeps): Promise<void> {
+  if (!deps.invokeLambdaAgent || !deps.lambdaAgentFunctionArn || !deps.onColdStartPreview) return;
+
+  const response = await deps.invokeLambdaAgent({
+    functionArn: deps.lambdaAgentFunctionArn,
+    userId: deps.userId,
+    sessionId: deps.sessionId ?? `session-${deps.userId}`,
+    message: deps.message,
+    channel: deps.channel,
+    connectionId: deps.connectionId,
+    disableTools: true,
+  });
+
+  if (response.success && response.payloads?.length) {
+    const text = response.payloads
+      .filter((p) => p.text && !p.isError)
+      .map((p) => p.text)
+      .join("\n");
+    if (text) {
+      await deps.onColdStartPreview(text);
+    }
+  }
+}
+
 export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
   // Phase 2: Lambda agent path
-  if (
-    deps.agentRuntime === "lambda" &&
-    deps.invokeLambdaAgent &&
-    deps.lambdaAgentFunctionArn
-  ) {
+  if (deps.agentRuntime === "lambda" && deps.invokeLambdaAgent && deps.lambdaAgentFunctionArn) {
     const response = await deps.invokeLambdaAgent({
       functionArn: deps.lambdaAgentFunctionArn,
       userId: deps.userId,
@@ -180,11 +211,7 @@ export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
   }
 
   // Smart routing: when agentRuntime=both, classify based on task state and message hints
-  if (
-    deps.agentRuntime === "both" &&
-    deps.invokeLambdaAgent &&
-    deps.lambdaAgentFunctionArn
-  ) {
+  if (deps.agentRuntime === "both" && deps.invokeLambdaAgent && deps.lambdaAgentFunctionArn) {
     const taskState = await deps.getTaskState(deps.userId);
     const decision = classifyRoute({ message: deps.message, taskState });
 
@@ -196,7 +223,21 @@ export async function routeMessage(deps: RouteDeps): Promise<RouteResult> {
     if (decision === "fargate-new") {
       // Strip hint and queue to Fargate (new container)
       const strippedDeps = { ...deps, message: stripRouteHint(deps.message) };
-      return routeFargate(strippedDeps, taskState);
+      const result = await routeFargate(strippedDeps, taskState);
+
+      // Cold start preview: invoke Lambda for quick context while Fargate starts
+      if (
+        (result === "started" || result === "queued") &&
+        deps.onColdStartPreview !== undefined &&
+        deps.invokeLambdaAgent !== undefined &&
+        deps.lambdaAgentFunctionArn
+      ) {
+        invokeColdStartPreview(deps).catch((err) =>
+          console.warn("Cold start preview failed (non-fatal):", err),
+        );
+      }
+
+      return result;
     }
 
     // decision === "lambda": try Lambda, fall back to Fargate on failure

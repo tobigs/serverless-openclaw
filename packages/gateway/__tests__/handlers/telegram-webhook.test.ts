@@ -27,6 +27,10 @@ vi.mock("../../src/services/container.js", () => ({
   startTask: vi.fn(),
 }));
 
+vi.mock("../../src/services/lambda-agent.js", () => ({
+  invokeLambdaAgent: vi.fn(),
+}));
+
 vi.mock("../../src/services/identity.js", () => ({
   resolveUserId: (...args: unknown[]) => mockResolveUserId(...args),
   verifyOtpAndLink: (...args: unknown[]) => mockVerifyOtpAndLink(...args),
@@ -61,14 +65,9 @@ vi.mock("@aws-sdk/client-ec2", () => ({
   EC2Client: vi.fn(() => ({ send: vi.fn() })),
 }));
 
-function makeEvent(
-  body: Record<string, unknown>,
-  secretToken?: string,
-): APIGatewayProxyEventV2 {
+function makeEvent(body: Record<string, unknown>, secretToken?: string): APIGatewayProxyEventV2 {
   return {
-    headers: secretToken
-      ? { "x-telegram-bot-api-secret-token": secretToken }
-      : {},
+    headers: secretToken ? { "x-telegram-bot-api-secret-token": secretToken } : {},
     body: JSON.stringify(body),
   } as unknown as APIGatewayProxyEventV2;
 }
@@ -92,10 +91,7 @@ describe("telegram-webhook handler", () => {
   });
 
   it("should return 403 for invalid secret token", async () => {
-    const event = makeEvent(
-      { message: { chat: { id: 123 }, text: "hi" } },
-      "wrong-secret",
-    );
+    const event = makeEvent({ message: { chat: { id: 123 }, text: "hi" } }, "wrong-secret");
 
     const result = await handler(event);
 
@@ -206,10 +202,7 @@ describe("telegram-webhook handler", () => {
   });
 
   it("should return 200 for updates without message", async () => {
-    const event = makeEvent(
-      { edited_message: { chat: { id: 123 }, text: "edited" } },
-      "my-secret",
-    );
+    const event = makeEvent({ edited_message: { chat: { id: 123 }, text: "edited" } }, "my-secret");
 
     const result = await handler(event);
 
@@ -236,12 +229,9 @@ describe("telegram-webhook handler", () => {
     const result = await handler(event);
 
     expect(result.statusCode).toBe(200);
-    expect(mockVerifyOtpAndLink).toHaveBeenCalledWith(
-      expect.anything(),
-      "67890",
-      "123456",
-      { agentRuntime: undefined },
-    );
+    expect(mockVerifyOtpAndLink).toHaveBeenCalledWith(expect.anything(), "67890", "123456", {
+      agentRuntime: undefined,
+    });
     expect(mockSendTelegramMessage).toHaveBeenCalledWith(
       expect.anything(),
       expect.any(String),
@@ -327,6 +317,55 @@ describe("telegram-webhook handler", () => {
     expect(mockRouteMessage).not.toHaveBeenCalled();
   });
 
+  it("should pass agentRuntime and Lambda deps to routeMessage", async () => {
+    vi.stubEnv("AGENT_RUNTIME", "both");
+    vi.stubEnv("LAMBDA_AGENT_FUNCTION_ARN", "arn:aws:lambda:us-east-1:123:function:agent");
+    mockGetTaskState.mockResolvedValue({ status: "Running", publicIp: "1.2.3.4" });
+
+    const event = makeEvent(
+      {
+        message: {
+          chat: { id: 12345 },
+          from: { id: 67890 },
+          text: "hello",
+        },
+      },
+      "my-secret",
+    );
+
+    await handler(event);
+
+    const routeCall = mockRouteMessage.mock.calls[0][0];
+    expect(routeCall.agentRuntime).toBe("both");
+    expect(routeCall.lambdaAgentFunctionArn).toBe("arn:aws:lambda:us-east-1:123:function:agent");
+    expect(routeCall.invokeLambdaAgent).toBeDefined();
+    expect(routeCall.onColdStartPreview).toBeDefined();
+  });
+
+  it("should default agentRuntime to fargate when env not set", async () => {
+    delete process.env.AGENT_RUNTIME;
+    delete process.env.LAMBDA_AGENT_FUNCTION_ARN;
+    mockGetTaskState.mockResolvedValue({ status: "Running", publicIp: "1.2.3.4" });
+
+    const event = makeEvent(
+      {
+        message: {
+          chat: { id: 12345 },
+          from: { id: 67890 },
+          text: "hello",
+        },
+      },
+      "my-secret",
+    );
+
+    await handler(event);
+
+    const routeCall = mockRouteMessage.mock.calls[0][0];
+    expect(routeCall.agentRuntime).toBe("fargate");
+    expect(routeCall.invokeLambdaAgent).toBeUndefined();
+    expect(routeCall.lambdaAgentFunctionArn).toBeUndefined();
+  });
+
   it("should resolve userId for linked telegram user", async () => {
     mockResolveUserId.mockResolvedValueOnce("cognito-abc");
     mockGetTaskState.mockResolvedValue({ status: "Running", publicIp: "1.2.3.4" });
@@ -344,10 +383,7 @@ describe("telegram-webhook handler", () => {
 
     await handler(event);
 
-    expect(mockResolveUserId).toHaveBeenCalledWith(
-      expect.anything(),
-      "telegram:67890",
-    );
+    expect(mockResolveUserId).toHaveBeenCalledWith(expect.anything(), "telegram:67890");
     expect(mockRouteMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "cognito-abc",

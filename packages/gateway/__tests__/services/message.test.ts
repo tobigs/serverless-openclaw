@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  routeMessage,
-  savePendingMessage,
-  sendToBridge,
-} from "../../src/services/message.js";
+import { routeMessage, savePendingMessage, sendToBridge } from "../../src/services/message.js";
 
 vi.mock("@aws-sdk/lib-dynamodb", () => ({
   PutCommand: vi.fn((params: unknown) => ({ input: params, _tag: "PutCommand" })),
@@ -114,7 +110,14 @@ describe("message service", () => {
       connectionId: "conn-1",
       callbackUrl: "https://cb",
       bridgeAuthToken: "token",
-      startTaskParams: { cluster: "c", taskDefinition: "td", subnets: ["s"], securityGroups: ["sg"], containerName: "openclaw", environment: [] },
+      startTaskParams: {
+        cluster: "c",
+        taskDefinition: "td",
+        subnets: ["s"],
+        securityGroups: ["sg"],
+        containerName: "openclaw",
+        environment: [],
+      },
     };
 
     function makeDeps(overrides: Record<string, unknown> = {}) {
@@ -189,9 +192,11 @@ describe("message service", () => {
 
     it("should claim a pre-warmed container when no user task exists", async () => {
       const deps = makeDeps({
-        getTaskState: vi.fn()
+        getTaskState: vi
+          .fn()
           .mockResolvedValueOnce(null) // user's task state
-          .mockResolvedValueOnce({     // prewarm task state
+          .mockResolvedValueOnce({
+            // prewarm task state
             PK: "USER#system:prewarm",
             status: "Running",
             publicIp: "10.0.0.1",
@@ -227,9 +232,11 @@ describe("message service", () => {
       const failFetch = vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED"));
       const deps = makeDeps({
         fetchFn: failFetch,
-        getTaskState: vi.fn()
+        getTaskState: vi
+          .fn()
           .mockResolvedValueOnce(null) // user's task state
-          .mockResolvedValueOnce({     // prewarm task state
+          .mockResolvedValueOnce({
+            // prewarm task state
             PK: "USER#system:prewarm",
             status: "Running",
             publicIp: "10.0.0.1",
@@ -249,9 +256,11 @@ describe("message service", () => {
 
     it("should skip prewarm claim when prewarm task is Starting (no publicIp)", async () => {
       const deps = makeDeps({
-        getTaskState: vi.fn()
+        getTaskState: vi
+          .fn()
           .mockResolvedValueOnce(null) // user's task state
-          .mockResolvedValueOnce({     // prewarm task state — Starting, no IP
+          .mockResolvedValueOnce({
+            // prewarm task state — Starting, no IP
             PK: "USER#system:prewarm",
             status: "Starting",
             taskArn: "arn:prewarm-task",
@@ -271,7 +280,8 @@ describe("message service", () => {
 
     it("should skip prewarm claim when no prewarm task exists", async () => {
       const deps = makeDeps({
-        getTaskState: vi.fn()
+        getTaskState: vi
+          .fn()
           .mockResolvedValueOnce(null) // user's task state
           .mockResolvedValueOnce(null), // prewarm task state — none
       });
@@ -336,7 +346,9 @@ describe("message service", () => {
     });
 
     it("should fallback on bridge non-ok response (e.g. 502)", async () => {
-      const failFetch = vi.fn().mockResolvedValue({ ok: false, status: 502, statusText: "Bad Gateway" });
+      const failFetch = vi
+        .fn()
+        .mockResolvedValue({ ok: false, status: 502, statusText: "Bad Gateway" });
       const deps = makeDeps({
         fetchFn: failFetch,
         getTaskState: vi.fn().mockResolvedValue({
@@ -482,6 +494,76 @@ describe("message service", () => {
       expect(mockInvokeLambda).not.toHaveBeenCalled();
       expect(deps.startTask).toHaveBeenCalled();
       expect(deps.savePendingMessage).toHaveBeenCalled();
+    });
+
+    it("should invoke cold start preview when AGENT_RUNTIME=both and fargate-new cold starts", async () => {
+      const mockInvokeLambda = vi.fn().mockResolvedValue({
+        success: true,
+        payloads: [{ text: "Here's some context while you wait..." }],
+      });
+      const mockPreviewCallback = vi.fn();
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        message: "/heavy do something complex",
+        getTaskState: vi.fn().mockResolvedValue(null),
+        onColdStartPreview: mockPreviewCallback,
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("started");
+      expect(deps.startTask).toHaveBeenCalled();
+      // Preview is fire-and-forget, wait for it to settle
+      await new Promise((r) => setTimeout(r, 10));
+      expect(mockInvokeLambda).toHaveBeenCalledWith(
+        expect.objectContaining({
+          disableTools: true,
+          message: "/heavy do something complex",
+        }),
+      );
+      expect(mockPreviewCallback).toHaveBeenCalledWith("Here's some context while you wait...");
+    });
+
+    it("should not fail routing when cold start preview fails", async () => {
+      const mockInvokeLambda = vi
+        .fn()
+        .mockResolvedValueOnce({ success: false, error: "preview failed" }); // preview
+      const mockPreviewCallback = vi.fn();
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        message: "/fargate analyze data",
+        getTaskState: vi.fn().mockResolvedValue(null),
+        onColdStartPreview: mockPreviewCallback,
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("started");
+      await new Promise((r) => setTimeout(r, 10));
+      expect(mockPreviewCallback).not.toHaveBeenCalled();
+    });
+
+    it("should not invoke preview when onColdStartPreview callback is not provided", async () => {
+      const mockInvokeLambda = vi.fn();
+      const deps = makeDeps({
+        agentRuntime: "both",
+        invokeLambdaAgent: mockInvokeLambda,
+        lambdaAgentFunctionArn: "arn:aws:lambda:us-east-1:123:function:agent",
+        message: "/heavy build report",
+        getTaskState: vi.fn().mockResolvedValue(null),
+        // no onColdStartPreview
+      });
+
+      const result = await routeMessage(deps);
+
+      expect(result).toBe("started");
+      await new Promise((r) => setTimeout(r, 10));
+      // Lambda should NOT have been called for preview (only for routing)
+      expect(mockInvokeLambda).not.toHaveBeenCalled();
     });
 
     it("should fallback to Fargate when AGENT_RUNTIME=both and Lambda fails", async () => {

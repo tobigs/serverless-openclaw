@@ -40,7 +40,9 @@ export async function handler(event: {
   const secretToken = event.headers["x-telegram-bot-api-secret-token"];
   const expectedToken = secrets.get(process.env.SSM_TELEGRAM_SECRET_TOKEN!) ?? "";
 
-  const tokenMatch = secretToken && expectedToken &&
+  const tokenMatch =
+    secretToken &&
+    expectedToken &&
     secretToken.length === expectedToken.length &&
     timingSafeEqual(Buffer.from(secretToken), Buffer.from(expectedToken));
   if (!tokenMatch) {
@@ -96,9 +98,10 @@ export async function handler(event: {
     });
     console.log("[telegram] /link result", { telegramId, success: !("error" in result) });
     if (botToken) {
-      const msg = "error" in result
-        ? `❌ ${result.error}`
-        : "✅ Account linked! Web and Telegram now share the same container.";
+      const msg =
+        "error" in result
+          ? `❌ ${result.error}`
+          : "✅ Account linked! Web and Telegram now share the same container.";
       await sendTelegramMessage(fetch as never, botToken, connectionId, msg);
     }
     return { statusCode: 200, body: "OK" };
@@ -127,7 +130,11 @@ export async function handler(event: {
   if (agentRuntime !== "lambda") {
     const taskState = await getTaskState(dynamoSend, userId);
     const needsColdStart = !taskState || taskState.status === "Starting";
-    console.log("[telegram] fargate task state", { userId, taskStatus: taskState?.status ?? "none", needsColdStart });
+    console.log("[telegram] fargate task state", {
+      userId,
+      taskStatus: taskState?.status ?? "none",
+      needsColdStart,
+    });
 
     if (needsColdStart && botToken) {
       await sendTelegramMessage(
@@ -150,6 +157,7 @@ export async function handler(event: {
   }
 
   console.log("[telegram] routing message", { userId, channel: "telegram", agentRuntime });
+  const lambdaAgentFunctionArn = process.env.LAMBDA_AGENT_FUNCTION_ARN ?? "";
   await routeMessage({
     userId,
     message: text,
@@ -172,8 +180,8 @@ export async function handler(event: {
       environment: taskEnv,
     },
     agentRuntime,
-    invokeLambdaAgent,
-    lambdaAgentFunctionArn: process.env.LAMBDA_AGENT_FUNCTION_ARN ?? "",
+    invokeLambdaAgent: lambdaAgentFunctionArn ? invokeLambdaAgent : undefined,
+    lambdaAgentFunctionArn: lambdaAgentFunctionArn || undefined,
     onLambdaResponse: async (payloads) => {
       for (const payload of payloads ?? []) {
         if (payload.text && botToken) {
@@ -181,6 +189,11 @@ export async function handler(event: {
         }
       }
     },
+    onColdStartPreview: botToken
+      ? async (previewText) => {
+          await sendTelegramMessage(fetch as never, botToken, connectionId, `💡 ${previewText}`);
+        }
+      : undefined,
   });
 
   console.log("[telegram] message routed successfully", { userId });

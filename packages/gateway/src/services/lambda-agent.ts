@@ -1,8 +1,5 @@
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import type {
-  LambdaAgentEvent,
-  LambdaAgentResponse,
-} from "@serverless-openclaw/shared";
+import type { LambdaAgentEvent, LambdaAgentResponse } from "@serverless-openclaw/shared";
 
 const lambda = new LambdaClient({});
 
@@ -14,6 +11,7 @@ export interface InvokeLambdaAgentParams {
   channel: "web" | "telegram";
   connectionId?: string;
   telegramChatId?: string;
+  disableTools?: boolean;
 }
 
 /**
@@ -30,6 +28,7 @@ export async function invokeLambdaAgent(
     channel: params.channel,
     connectionId: params.connectionId,
     telegramChatId: params.telegramChatId,
+    disableTools: params.disableTools,
   };
 
   const result = await lambda.send(
