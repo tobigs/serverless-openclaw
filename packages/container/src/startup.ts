@@ -63,7 +63,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     void notifyTelegram(
       env.TELEGRAM_BOT_TOKEN,
       telegramChatId,
-      "⚡ 컨테이너 시작됨. AI 엔진 연결 중...",
+      "⚡ Container started. Connecting to AI engine...",
     );
   }
 
@@ -81,7 +81,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     void notifyTelegram(
       env.TELEGRAM_BOT_TOKEN,
       telegramChatId,
-      "✅ 준비 완료! 메시지를 처리합니다...",
+      "✅ Ready! Processing messages...",
     );
   }
 

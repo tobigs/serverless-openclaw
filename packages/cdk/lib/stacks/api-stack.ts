@@ -94,11 +94,17 @@ export class ApiStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       memorySize: 256,
       timeout: cdk.Duration.seconds(30),
-      logRetention: logs.RetentionDays.ONE_WEEK,
       projectRoot: monorepoRoot,
       depsLockFilePath: path.join(monorepoRoot, "package-lock.json"),
       bundling: bundlingDefaults,
     };
+
+    const makeLogGroup = (id: string, name: string) =>
+      new logs.LogGroup(this, id, {
+        logGroupName: `/aws/lambda/${name}`,
+        retention: logs.RetentionDays.ONE_WEEK,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
 
     // ── Lambda Functions ──
 
@@ -107,6 +113,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-ws-connect",
       entry: path.join(handlersDir, "ws-connect.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("WsConnectLogGroup", "serverless-openclaw-ws-connect"),
       environment: {
         ...commonEnv,
         USER_POOL_ID: props.userPool.userPoolId,
@@ -119,6 +126,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-ws-disconnect",
       entry: path.join(handlersDir, "ws-disconnect.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("WsDisconnectLogGroup", "serverless-openclaw-ws-disconnect"),
       environment: { ...commonEnv },
     });
 
@@ -127,6 +135,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-ws-message",
       entry: path.join(handlersDir, "ws-message.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("WsMessageLogGroup", "serverless-openclaw-ws-message"),
       environment: { ...commonEnv },
     });
 
@@ -135,6 +144,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-telegram-webhook",
       entry: path.join(handlersDir, "telegram-webhook.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("TelegramWebhookLogGroup", "serverless-openclaw-telegram-webhook"),
       environment: { ...commonEnv },
     });
 
@@ -143,6 +153,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-api-handler",
       entry: path.join(handlersDir, "api-handler.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("ApiHandlerLogGroup", "serverless-openclaw-api-handler"),
       environment: { ...commonEnv },
     });
 
@@ -151,6 +162,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-watchdog",
       entry: path.join(handlersDir, "watchdog.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("WatchdogLogGroup", "serverless-openclaw-watchdog"),
       environment: { ...commonEnv },
     });
 
@@ -159,6 +171,7 @@ export class ApiStack extends cdk.Stack {
       functionName: "serverless-openclaw-prewarm",
       entry: path.join(handlersDir, "prewarm.ts"),
       handler: "handler",
+      logGroup: makeLogGroup("PrewarmLogGroup", "serverless-openclaw-prewarm"),
       environment: {
         ...commonEnv,
         PREWARM_DURATION: process.env.PREWARM_DURATION ?? "60",

@@ -10,6 +10,7 @@ import { startTask } from "../services/container.js";
 import { sendTelegramMessage } from "../services/telegram.js";
 import { resolveUserId, verifyOtpAndLink } from "../services/identity.js";
 import { resolveSecrets } from "../services/secrets.js";
+import { invokeLambdaAgent } from "../services/lambda-agent.js";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ecs = new ECSClient({});
@@ -77,7 +78,7 @@ export async function handler(event: {
           fetch as never,
           botToken,
           connectionId,
-          "사용법: /link {6자리 코드}",
+          "Usage: /link {6-digit code}",
         );
       }
       return { statusCode: 200, body: "OK" };
@@ -86,7 +87,7 @@ export async function handler(event: {
     if (botToken) {
       const msg = "error" in result
         ? `❌ ${result.error}`
-        : "✅ 계정 연동 완료! 이제 웹과 Telegram이 같은 컨테이너를 공유합니다.";
+        : "✅ Account linked! Web and Telegram now share the same container.";
       await sendTelegramMessage(fetch as never, botToken, connectionId, msg);
     }
     return { statusCode: 200, body: "OK" };
@@ -99,7 +100,7 @@ export async function handler(event: {
         fetch as never,
         botToken,
         connectionId,
-        "연동 해제는 웹 UI 설정에서만 가능합니다.",
+        "Unlinking is only available from the Web UI settings.",
       );
     }
     return { statusCode: 200, body: "OK" };
@@ -117,7 +118,7 @@ export async function handler(event: {
       fetch as never,
       botToken,
       connectionId,
-      "🔄 에이전트를 깨우는 중... 잠시만 기다려주세요.",
+      "🔄 Waking up the agent... please wait.",
     );
   }
 
@@ -152,6 +153,9 @@ export async function handler(event: {
       containerName: "openclaw",
       environment: taskEnv,
     },
+    agentRuntime: (process.env.AGENT_RUNTIME as "lambda" | "fargate" | "both") ?? "fargate",
+    invokeLambdaAgent,
+    lambdaAgentFunctionArn: process.env.LAMBDA_AGENT_FUNCTION_ARN ?? "",
   });
 
   return { statusCode: 200, body: "OK" };

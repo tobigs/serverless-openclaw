@@ -97,7 +97,7 @@ export async function verifyOtpAndLink(
     | { cognitoUserId: string }
     | undefined;
   if (!otpOwner) {
-    return { error: "OTP가 만료되었거나 유효하지 않습니다." };
+    return { error: "OTP has expired or is invalid." };
   }
   const cognitoUserId = otpOwner.cognitoUserId;
 
@@ -115,7 +115,7 @@ export async function verifyOtpAndLink(
   if (taskState && taskState.status !== "Idle") {
     return {
       error:
-        "Telegram 컨테이너가 실행 중입니다. 약 15분 후 다시 시도해주세요.",
+        "A Telegram container is currently running. Please try again in about 15 minutes.",
     };
   }
 
@@ -135,7 +135,7 @@ export async function verifyOtpAndLink(
     | undefined;
   if (existing && existing.cognitoUserId !== cognitoUserId) {
     return {
-      error: "이 Telegram 계정은 이미 다른 계정에 연동되어 있습니다.",
+      error: "This Telegram account is already linked to a different account.",
     };
   }
 
@@ -153,7 +153,7 @@ export async function verifyOtpAndLink(
     );
   } catch (err: unknown) {
     if ((err as { name?: string }).name === "ConditionalCheckFailedException") {
-      return { error: "OTP가 만료되었거나 유효하지 않습니다." };
+      return { error: "OTP has expired or is invalid." };
     }
     throw err;
   }
