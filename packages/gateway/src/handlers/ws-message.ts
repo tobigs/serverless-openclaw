@@ -13,6 +13,7 @@ import { getTaskState, putTaskState, deleteTaskState } from "../services/task-st
 import { routeMessage, savePendingMessage } from "../services/message.js";
 import { startTask } from "../services/container.js";
 import { resolveSecrets } from "../services/secrets.js";
+import { invokeLambdaAgent } from "../services/lambda-agent.js";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ecs = new ECSClient({});
@@ -71,7 +72,13 @@ export async function handler(event: {
   }
 
   if (msg.action === "sendMessage") {
+    const agentRuntime = (process.env.AGENT_RUNTIME as "lambda" | "fargate" | "both") ?? "fargate";
     const secrets = await resolveSecrets([process.env.SSM_BRIDGE_AUTH_TOKEN!]);
+
+    if (agentRuntime === "lambda" || agentRuntime === "both") {
+      await pushToConnection(connectionId, { type: "status", status: "running" });
+    }
+
     const result = await routeMessage({
       userId,
       message: msg.message ?? "",
@@ -95,6 +102,17 @@ export async function handler(event: {
           { name: "USER_ID", value: userId },
           { name: "CALLBACK_URL", value: process.env.WEBSOCKET_CALLBACK_URL ?? "" },
         ],
+      },
+      agentRuntime,
+      invokeLambdaAgent,
+      lambdaAgentFunctionArn: process.env.LAMBDA_AGENT_FUNCTION_ARN ?? "",
+      onLambdaResponse: async (payloads) => {
+        for (const payload of payloads ?? []) {
+          if (payload.text) {
+            await pushToConnection(connectionId, { type: "message", content: payload.text });
+          }
+        }
+        await pushToConnection(connectionId, { type: "status", status: "Idle" });
       },
     });
 
