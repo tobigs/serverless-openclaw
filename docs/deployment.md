@@ -446,7 +446,53 @@ ComputeStack resources will be skipped. To rollback: set `AGENT_RUNTIME=fargate`
 
 ---
 
-## 10. Troubleshooting
+## 10. AI Provider Configuration
+
+By default the system uses Anthropic (requires `AnthropicApiKey` in SecretsStack). Set `AI_PROVIDER=bedrock` to use Amazon Bedrock instead — no API key needed, authentication uses the Lambda execution role / Fargate task role via the AWS SDK default credential chain.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_PROVIDER` | `anthropic` | `anthropic` or `bedrock` |
+| `AI_MODEL` | _(provider default)_ | Override model ID (optional) |
+
+**Default models:**
+- Anthropic: `claude-sonnet-4-20250514`
+- Bedrock: region-aware (see table below)
+
+**Bedrock model selection — Cross-Region Inference (CRIS):**
+
+The Bedrock model ID is derived automatically from `AWS_REGION` at runtime. Bedrock requires a geographic prefix to route requests within a compliance boundary:
+
+| AWS Regions | Model ID used |
+|-------------|---------------|
+| `eu-*` | `eu.anthropic.claude-sonnet-4-20250514-v1:0` |
+| `us-*`, `ca-*` | `us.anthropic.claude-sonnet-4-20250514-v1:0` |
+| `ap-*` | `apac.anthropic.claude-sonnet-4-20250514-v1:0` |
+| All other regions | `anthropic.claude-sonnet-4-20250514-v1:0` (no prefix) |
+
+Set `AI_MODEL` to override automatic resolution (you are responsible for using the correct format). `bedrockDiscovery` is always disabled — model selection is explicit via `resolveBedrockModel()`.
+
+### Switching to Bedrock
+
+```bash
+# In .env
+AI_PROVIDER=bedrock
+
+# Deploy — AnthropicApiKey SSM parameter is skipped automatically
+AI_PROVIDER=bedrock npx cdk deploy --all --profile $AWS_PROFILE --region $AWS_REGION
+```
+
+The SecretsStack skips the `AnthropicApiKey` SSM parameter when `AI_PROVIDER=bedrock`. Bedrock IAM permissions (`bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`) are provisioned on both Lambda and Fargate roles regardless of provider (no cost, avoids drift on provider switch).
+
+### Switching back to Anthropic
+
+```bash
+AI_PROVIDER=anthropic npx cdk deploy --all --profile $AWS_PROFILE --region $AWS_REGION
+```
+
+---
+
+## 11. Troubleshooting
 
 ### CDK synth failure: `Cannot find asset`
 
