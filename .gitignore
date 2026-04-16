@@ -40,3 +40,6 @@ coverage/
 
 # References (cloned repos for study)
 references/
+
+# Fork-specific docs (not relevant to upstream)
+docs/local/
