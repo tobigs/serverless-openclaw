@@ -23,7 +23,7 @@ RUN apt-get update && \
 
 # Install OpenClaw CLI (version configurable via build arg)
 ARG OPENCLAW_VERSION=2026.2.13
-RUN npm install -g openclaw@${OPENCLAW_VERSION} && \
+RUN npm install -g openclaw@${OPENCLAW_VERSION} @aws-sdk/client-s3 && \
     npm cache clean --force
 
 # Create non-root user
