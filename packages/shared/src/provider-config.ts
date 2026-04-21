@@ -9,7 +9,7 @@ export interface ProviderConfig {
 }
 
 // Base Bedrock model ID (without CRIS prefix)
-export const BEDROCK_BASE_MODEL = "anthropic.claude-sonnet-4-20250514-v1:0";
+export const BEDROCK_BASE_MODEL = "anthropic.claude-opus-4-6-v1";
 
 // Maps AWS region → cross-region inference system (CRIS) geographic prefix.
 // Bedrock uses these prefixes to route requests within a geographic boundary.
@@ -62,9 +62,7 @@ const VALID_PROVIDERS: readonly string[] = ["anthropic", "bedrock"];
 
 export function validateProvider(value: string): asserts value is AiProvider {
   if (!VALID_PROVIDERS.includes(value)) {
-    throw new Error(
-      `Unsupported AI_PROVIDER: '${value}'. Valid values: anthropic, bedrock`,
-    );
+    throw new Error(`Unsupported AI_PROVIDER: '${value}'. Valid values: anthropic, bedrock`);
   }
 }
 
@@ -93,9 +91,11 @@ export function resolveModel(provider: "anthropic", aiModel?: string): string {
   return aiModel || PROVIDER_DEFAULTS[provider].defaultModel;
 }
 
-export function resolveProviderConfig(
-  env?: { AI_PROVIDER?: string; AI_MODEL?: string; AWS_REGION?: string },
-): ProviderConfig {
+export function resolveProviderConfig(env?: {
+  AI_PROVIDER?: string;
+  AI_MODEL?: string;
+  AWS_REGION?: string;
+}): ProviderConfig {
   const resolved = env ?? process.env;
   const raw = resolved.AI_PROVIDER ?? "anthropic";
   validateProvider(raw);
