@@ -3,6 +3,15 @@ set -euo pipefail
 
 CONFIG_PATH="/home/openclaw/.openclaw/openclaw.json"
 
+# Pull Google Workspace OAuth credentials from S3 (best-effort — Gmail MCP
+# degrades gracefully if these are absent)
+if [ -n "${DATA_BUCKET:-}" ]; then
+  echo "[start] Syncing Google Workspace credentials from s3://${DATA_BUCKET}/secrets/google-workspace/..."
+  mkdir -p "${HOME}/.google_workspace_mcp/credentials"
+  aws s3 sync "s3://${DATA_BUCKET}/secrets/google-workspace/" "${HOME}/.google_workspace_mcp/credentials/" \
+    --only-show-errors || echo "[start] WARNING: google-workspace credential sync failed; Gmail MCP will be unavailable"
+fi
+
 echo "[start] Patching openclaw.json..."
 node /app/dist/patch-config.js "${CONFIG_PATH}" 2>&1 || echo "[start] WARNING: patch-config exited with code $?"
 

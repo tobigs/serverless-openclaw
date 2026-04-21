@@ -18,8 +18,11 @@ RUN npm run build --workspace=packages/shared --workspace=packages/container
 FROM --platform=linux/arm64 node:22-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl git && \
+    apt-get install -y --no-install-recommends ca-certificates curl git awscli && \
     rm -rf /var/lib/apt/lists/*
+
+# Install uv (provides uvx) — used to fetch MCP servers like workspace-mcp on demand
+RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 # Install OpenClaw CLI (version configurable via build arg)
 ARG OPENCLAW_VERSION=2026.2.13

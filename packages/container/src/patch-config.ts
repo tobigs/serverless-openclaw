@@ -1,4 +1,6 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { GATEWAY_PORT, resolveProviderConfig } from "@serverless-openclaw/shared";
 import type { AiProvider } from "@serverless-openclaw/shared";
 
@@ -7,6 +9,12 @@ interface PatchOptions {
   aiProvider?: AiProvider;
   awsRegion?: string;
   workspacePath?: string;
+}
+
+function readTrimmed(path: string): string | undefined {
+  if (!existsSync(path)) return undefined;
+  const v = readFileSync(path, "utf-8").trim();
+  return v || undefined;
 }
 
 export function patchConfig(configPath: string, options?: PatchOptions): void {
@@ -49,7 +57,9 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
       AI_MODEL: options.llmModel,
       AWS_REGION: options.awsRegion,
     });
-    defaults.model = { primary: `${providerConfig.openclawProvider}/${providerConfig.defaultModel}` };
+    defaults.model = {
+      primary: `${providerConfig.openclawProvider}/${providerConfig.defaultModel}`,
+    };
   }
 
   if (options?.workspacePath) {
@@ -58,6 +68,26 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
 
   agents.defaults = defaults;
   config.agents = agents;
+
+  // Register Google Workspace MCP if OAuth client creds were synced from S3
+  const credsDir = join(homedir(), ".google_workspace_mcp", "credentials");
+  const clientId = readTrimmed(join(credsDir, "client_id.txt"));
+  const clientSecret = readTrimmed(join(credsDir, "client_secret.txt"));
+  if (clientId && clientSecret) {
+    const mcp = (config.mcp ?? {}) as Record<string, unknown>;
+    const servers = (mcp.servers ?? {}) as Record<string, unknown>;
+    servers["google-workspace"] = {
+      command: "uvx",
+      args: ["workspace-mcp", "--tools", "gmail", "calendar", "tasks"],
+      env: {
+        GOOGLE_OAUTH_CLIENT_ID: clientId,
+        GOOGLE_OAUTH_CLIENT_SECRET: clientSecret,
+        OAUTHLIB_INSECURE_TRANSPORT: "1",
+      },
+    };
+    mcp.servers = servers;
+    config.mcp = mcp;
+  }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
 }
