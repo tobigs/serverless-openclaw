@@ -24,6 +24,9 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   // Set gateway port
   config.gateway = { ...config.gateway, port: GATEWAY_PORT };
 
+  // Allow the agent to self-restart via the gateway restart command
+  config.commands = { ...config.commands, restart: true };
+
   // Remove auth secrets from config (API keys delivered via env vars only)
   if (config.auth) {
     delete config.auth.token;
