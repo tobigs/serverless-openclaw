@@ -44,3 +44,7 @@ references/
 # Fork-specific docs (not relevant to upstream)
 docs/local/
 docs-local/
+
+# Kiro/agent session exports (may contain personal info, transcripts, paths)
+*kiro-session*.json
+*-session-export*.json
