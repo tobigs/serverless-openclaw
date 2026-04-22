@@ -178,3 +178,19 @@ Unknown: the exact mechanism by which `a572cf3` produced empty responses. The ad
 - Regression in a code path exercised only by the post-deploy Lambda binary (e.g. a transitive dependency bump picked up during the `cdk deploy` Lambda bundle build) — could be coincidental timing.
 
 Any re-attempt of the `lastActivity` refresh should (a) use `UpdateCommand` rather than `PutCommand` to avoid whole-item replacement races, (b) land behind a feature flag with a one-command kill switch, (c) be deployed with a smoke test that confirms end-to-end "ping → reply" before closing the session.
+
+### Forensic follow-up on the rollback
+
+A bundle-diff and log inspection was done after the rollback to narrow the hypothesis space:
+
+- **Lambda bundles compared** (`cdk-hnb659fds-assets-458631299885-eu-central-1`): the pre-revert `ws-message` bundle (`974c9bd7...zip`, SHA `sGwWDCvL...`) and the post-revert bundle (`581628f1...zip`, SHA `mq9jxm6C...`) differ in `index.js` by exactly the 4 lines of `a572cf3` and their corresponding sourcemap entries. File listing identical. **No dependency-version shift between the two builds — option 3 ruled out.**
+- **Gateway Lambda logs during the buggy window** (`/aws/lambda/serverless-openclaw-telegram-webhook`, 09:53–10:10 UTC): all invocations completed in 700–1300 ms with no errors, no `Bridge unreachable` warnings, no thrown exceptions. `routeFargate` successfully ran the "Running + publicIp" branch and returned `"sent"` every time. **The added `putTaskState` call did not throw — the "catch-fallthrough deletes the task" hypothesis is ruled out.**
+- **DynamoDB `TaskState` item during the buggy window**: only the six declared `TaskStateItem` fields are present (PK, taskArn, status, publicIp, startedAt, lastActivity). No hidden attributes; the spread-and-rewrite pattern preserves every field. **Field-clobbering ruled out.**
+- **Container-side DynamoDB writes**: the container only writes `TaskState` from `LifecycleManager.updateTaskState`, called once at boot (`Running`) and once at graceful shutdown (`Idle`). No mid-turn writes. **No concurrent-write race is possible from the container side.**
+
+What that leaves:
+
+- Mechanism still unknown. The 4-line change is functionally inert from the perspective of the response path: the bridge has already returned `202` and started async processing before `putTaskState` runs, the container never reads `TaskState` during a turn, and the Telegram callback path goes directly to `api.telegram.org` without touching DDB. Yet every turn produced `ResponseLength=0` while the change was live, and normal-length responses resumed immediately after the revert.
+- The bundle diff and DDB checks disprove the easy explanations. The remaining candidates involve the OpenClaw gateway's internal state or an interaction with its `getUpdates 409` conflict loop, neither of which are in the scope of this repo. Confirmation would require either reproducing locally or adding observability inside the container's bridge.
+
+Verdict: **correlation-only attribution**. The revert restored working behavior (two independent user pings confirmed), so the 4-line change is the proximate cause, but the exact mechanism is not identified. The recommendations above (`UpdateCommand`, feature flag, smoke test) are the right guardrails for any re-attempt; a reproduction in a staging environment should precede shipping a v2.
