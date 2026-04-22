@@ -3,11 +3,11 @@
 Date: 2026-04-22
 Scope: Read-only investigation. No production code was modified.
 
-Account: `458631299885` · Region: `eu-central-1` · Cluster: `serverless-openclaw`
+Account: `<REDACTED>` · Region: `eu-central-1` · Cluster: `serverless-openclaw`
 
 ## Summary
 
-Containers are being killed by the watchdog Lambda roughly 10–15 minutes after the last WebSocket message, not 30 minutes. The effective cutoff at the kill hour (KST 16–17 = UTC 07–08) is `INACTIVE_TIMEOUT_MS = 10 min`, not `ACTIVE_TIMEOUT_MS = 30 min`, because the 7-day CloudWatch `MessageLatency` history for those hours has fewer than `ACTIVE_HOUR_THRESHOLD = 2` matching datapoints. DynamoDB `lastActivity` is only updated on inbound gateway messages; it does not advance while the container is handling a long agent turn, so even active conversations look idle to the watchdog.
+Containers are being killed by the watchdog Lambda ~10–15 minutes after the task starts even while the user is actively chatting. Root cause: the gateway's `routeFargate` happy path — message sent to a Running container — never writes `lastActivity` back to DynamoDB. `lastActivity` is only advanced on task start or prewarm claim, so every subsequent inbound message during an active session leaves the DDB timestamp pinned to the task's start time. Once the watchdog's inactive-hour branch fires (driven by sparse CloudWatch `MessageLatency` history and `ACTIVE_HOUR_THRESHOLD = 2`), the task is killed for "inactivity" despite live traffic.
 
 The reported "4 vCPU / 16 GB" inside the container is a mix of truth and host-view: the Fargate task definition in use is `cpu=4096, memory=8192` (4 vCPU / 8 GB), and `os.totalmem()` reports the underlying host (~16 GB), not the task cap.
 
@@ -113,17 +113,25 @@ Explaining the "4 vCPU / 16 GB" reading from inside the container:
 
 Action required on sizing: **none**. The deployed task is 4 vCPU / 8 GB as requested via `.env`. The CDK defaults (1 vCPU / 2 GB) are only relevant if `FARGATE_CPU` / `FARGATE_MEMORY` are unset.
 
-## Recommended next step
+## Root cause and applied fix
 
-Single recommendation, smallest viable fix first:
+The initial investigation flagged sparse CloudWatch history as the trigger for the `INACTIVE_TIMEOUT_MS = 10 min` branch firing. That was true, but a follow-up pass found a deeper bug: the gateway's `routeFargate` happy path (task already `Running` with a `publicIp`) calls `sendToBridge(...)` and returns `"sent"` without writing `lastActivity` back to DynamoDB. Prior to the fix, `lastActivity` was only advanced in three places — task start (`packages/gateway/src/services/message.ts:157`), prewarm claim (`:124`), and the lambda-agent path — none of which fire during a normal active conversation hitting an already-running container.
 
-**Raise `INACTIVE_TIMEOUT_MS` and `INACTIVITY_TIMEOUT_MS` to 30 min (match `ACTIVE_TIMEOUT_MS`).** This turns the "sparse CloudWatch history" misclassification into a no-op — the worst-case cutoff becomes 30 min instead of 10 min. One-line change in `packages/shared/src/constants.ts:48-49` (plus the `INACTIVITY_TIMEOUT_MS` at line 25). No new surface area, no heartbeat, no env-var plumbing.
+Evidence from `/aws/lambda/serverless-openclaw-telegram-webhook` for the 08:00–08:20 UTC window on 2026-04-22:
 
-Rationale over the alternatives:
+- Task `3cb07c3e` was alive from 08:04:23 to 08:17:49 UTC.
+- Telegram webhook received **8 inbound messages** between 08:08:19 and 08:14:13 UTC for the same user.
+- None of those messages advanced `lastActivity` in DynamoDB — the task took the "Running + publicIp" branch every time and skipped the `putTaskState` write.
+- At 08:17:49 UTC the watchdog scanned, computed `inactiveMs` against a `lastActivity` pinned to the task's start time, and killed the task under the 10-min inactive branch.
 
-- **Env-configurable defaults** (raise + env vars): extra complexity for a pressure valve that is not currently needed. Can be added later if the 30-min uniform cutoff turns out to still be too short.
-- **Heartbeat from the container** (write `lastActivity` to DDB periodically): correctly fixes the structural freeze, but adds a setInterval, a DDB write per minute per task, and a "turn-active vs. idle" gating decision. Not justified until we see that 30 min is insufficient for real long turns.
-- **`ConsistentRead` on the watchdog scan** (one-line): orthogonal correctness fix, worth doing opportunistically but would not have prevented any of the three kills observed here (the `lastActivity` values were minutes stale, not seconds).
-- **Removing the CloudWatch classifier entirely**: tempting given it misclassified here, but the sparse-history behavior will self-correct as the metric matures, and keeping the classifier is cheap. Raising the fallbacks renders its misclassification harmless.
+Applied fix: add a `putTaskState({ ...taskState, lastActivity: new Date().toISOString() })` call right after the successful `sendToBridge` in `packages/gateway/src/services/message.ts`. This is the minimum change that makes the watchdog see real activity.
 
-Do X next: change the two lines in `packages/shared/src/constants.ts` (`INACTIVITY_TIMEOUT_MS` and `INACTIVE_TIMEOUT_MS`) to `30 * 60 * 1000`, redeploy `ApiStack` (where the watchdog Lambda lives), and monitor for another week. If tasks still get killed mid-conversation, the next step is the container-side heartbeat.
+The timeout defaults were also raised (30 min for both `INACTIVE_TIMEOUT_MS` and `INACTIVITY_TIMEOUT_MS`) as a belt-and-braces measure so that a single CloudWatch misclassification or `lastActivity` write failure produces a 30-minute grace window instead of 10–15.
+
+Deferred follow-ups (not applied, not currently needed):
+
+- **Container-side heartbeat for very long agent turns**: would only matter for a single user message that takes > 30 min of tool calls to answer with no follow-up message in the meantime.
+- **`ConsistentRead: true` on the watchdog scan**: adds at most a few seconds of correctness to the read — orthogonal to the bug that caused the kills observed here.
+- **Warn-log on the silent `catch {}` in `getActiveTimeout()`**: nice-to-have for future CloudWatch debugging; not causal in these incidents.
+
+Do X next: deploy the `ApiStack` (houses the gateway Lambda and the watchdog) and monitor for another week of normal usage. If a single message that takes > 30 min to answer ever triggers a mid-turn kill, revisit the heartbeat.
