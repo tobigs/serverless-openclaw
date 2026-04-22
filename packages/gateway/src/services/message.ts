@@ -92,11 +92,6 @@ async function routeFargate(
         connectionId: deps.connectionId,
         callbackUrl: deps.callbackUrl,
       });
-      // Refresh lastActivity so the watchdog doesn't kill an active container
-      await deps.putTaskState({
-        ...taskState,
-        lastActivity: new Date().toISOString(),
-      });
       return "sent";
     } catch (err) {
       console.warn(
