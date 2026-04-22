@@ -135,3 +135,22 @@ Deferred follow-ups (not applied, not currently needed):
 - **Warn-log on the silent `catch {}` in `getActiveTimeout()`**: nice-to-have for future CloudWatch debugging; not causal in these incidents.
 
 Do X next: deploy the `ApiStack` (houses the gateway Lambda and the watchdog) and monitor for another week of normal usage. If a single message that takes > 30 min to answer ever triggers a mid-turn kill, revisit the heartbeat.
+
+## Post-deploy verification
+
+`ApiStack` deployed 2026-04-22 at ~11:40 UTC+2. All 7 Lambdas updated; watchdog `CodeSha256` changed from `CEAJAoe0ZGxqsOyL4q8rcfgO4a7qvHlCpntGIuU1oaU=` to `5tcVBVOHeuJXX+aaxYOu3eXVSNRzn3qswGdULRRloo0=`.
+
+Live verification, task `3f7fc447` started 11:45:13 UTC+2:
+
+| Time (UTC) | Source                      | Observation                                                                   |
+| ---------- | --------------------------- | ----------------------------------------------------------------------------- |
+| 09:44:39   | telegram-webhook Lambda     | message 1 received; task-start path writes `lastActivity = startedAt`         |
+| 09:47:51   | DynamoDB `TaskState`        | `status=Running`, `publicIp=52.59.231.154`, `lastActivity=startedAt=09:47:51` |
+| 09:48:00   | CloudWatch `MessageLatency` | SampleCount=1, Average=200,382 ms (includes cold start)                       |
+| 09:53:10   | telegram-webhook Lambda     | message 2 received; takes `Running+publicIp` branch in `routeFargate`         |
+| 09:53:11   | DynamoDB `TaskState`        | **`lastActivity = 09:53:11Z` — advanced 5m20s past `startedAt`**              |
+| 09:53:00   | CloudWatch `MessageLatency` | SampleCount=1, Average=9,865 ms (warm path)                                   |
+
+The 5m20s advance of `lastActivity` past `startedAt` is only possible through the new `putTaskState` call added to `routeFargate`'s happy path. Fix confirmed live.
+
+Unrelated pre-existing issue observed during verification: the OpenClaw container's built-in Telegram provider emits `getUpdates` 409 conflicts every 30 s because the gateway-configured webhook owns the Telegram channel. The previous (pre-deploy) task exhibited the same 31 conflicts. This is outside the scope of the watchdog fix and should be tracked separately.
