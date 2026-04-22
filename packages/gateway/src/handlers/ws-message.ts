@@ -9,7 +9,12 @@ import {
 
 import type { ClientMessage, ServerMessage } from "@serverless-openclaw/shared";
 import { getConnection } from "../services/connections.js";
-import { getTaskState, putTaskState, deleteTaskState } from "../services/task-state.js";
+import {
+  getTaskState,
+  putTaskState,
+  deleteTaskState,
+  updateLastActivity,
+} from "../services/task-state.js";
 import { routeMessage, savePendingMessage } from "../services/message.js";
 import { startTask } from "../services/container.js";
 import { resolveSecrets } from "../services/secrets.js";
@@ -89,6 +94,7 @@ export async function handler(event: {
       getTaskState: (uid) => getTaskState(dynamoSend, uid),
       startTask: (params) => startTask(ecsSend, params),
       putTaskState: (item) => putTaskState(dynamoSend, item),
+      updateLastActivity: (uid) => updateLastActivity(dynamoSend, uid),
       savePendingMessage: (item) => savePendingMessage(dynamoSend, item),
       deleteTaskState: (uid) => deleteTaskState(dynamoSend, uid),
       startTaskParams: {
