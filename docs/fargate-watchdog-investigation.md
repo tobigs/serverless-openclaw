@@ -194,3 +194,79 @@ What that leaves:
 - The bundle diff and DDB checks disprove the easy explanations. The remaining candidates involve the OpenClaw gateway's internal state or an interaction with its `getUpdates 409` conflict loop, neither of which are in the scope of this repo. Confirmation would require either reproducing locally or adding observability inside the container's bridge.
 
 Verdict: **correlation-only attribution**. The revert restored working behavior (two independent user pings confirmed), so the 4-line change is the proximate cause, but the exact mechanism is not identified. The recommendations above (`UpdateCommand`, feature flag, smoke test) are the right guardrails for any re-attempt; a reproduction in a staging environment should precede shipping a v2.
+
+## Re-attempt and live confirmation (2026-04-22 evening)
+
+Re-attempted the `lastActivity` refresh with the guardrails the earlier section prescribed: `UpdateCommand` instead of `PutCommand` (single-attribute atomic, no whole-item race) and a deploy-verify-revert-if-needed loop. No feature flag — the single-attribute update is narrow enough that rollback is a one-line revert.
+
+### Deploy
+
+`ApiStack` deployed 2026-04-22 at 17:34 UTC+2. All 3 gateway Lambdas updated (`WsMessageFn`, `TelegramWebhookFn`, `ApiHandlerFn`). Watchdog Lambda unchanged (no code impact on it from this commit).
+
+### Live data
+
+Same Telegram user, same account, same region (eu-central-1), captured live from AWS:
+
+**Baseline task (pre-fix, killed earlier in the day):**
+
+| Field | Value |
+|---|---|
+| Task ARN suffix | `669e54e2ac4c40749b9c14f787115fee` |
+| Started at | 2026-04-22T14:55:01.966Z |
+| `lastActivity` at kill | 2026-04-22T14:57:37.684Z (frozen at task-start) |
+| Stopping at | 2026-04-22T15:27:49.666Z |
+| Stopped reason | `Watchdog: inactivity timeout` |
+| Stop code | `UserInitiated` |
+| Exit code | 137 |
+| Uptime at kill | 32m 48s |
+| User pinged at | 14:54:26 UTC (cold start), 15:00:30 UTC (happy path) |
+| Time from last ping to kill | 27m 19s — killed while actively chatting |
+
+**Post-fix task:**
+
+| Field | Value |
+|---|---|
+| Task ARN suffix | `4420ab849e5242fa94693d1fd626cbb4` |
+| Started at | 2026-04-22T15:34:38.780Z |
+| User pings | 15:34:06 UTC (cold start), 15:46:25 UTC (happy path), 15:50:57 UTC (happy path) |
+| `lastActivity` writes observed in DDB | 15:37:10.640Z (task-start), 15:46:26.151Z (ping 2), 15:50:58.516Z (ping 3) |
+| `lastActivity` at kill | 2026-04-22T15:50:58.516Z |
+| Stopping at | 2026-04-22T16:22:50.764Z |
+| Stopped reason | `Watchdog: inactivity timeout` |
+| Exit code | 137 |
+| Uptime at kill | 48m 12s |
+| Time from last ping to kill | 29m 53s — exactly the 30-min cutoff elapsed from `lastActivity` |
+
+**Key observation:** baseline was killed relative to `startedAt` (because `lastActivity` never advanced past it). Post-fix was killed relative to `lastActivity` (which advanced on every happy-path ping). This is exactly the transition the mechanism hypothesis predicted.
+
+### Regression check
+
+`ResponseLength` CloudWatch metric for channel=telegram, 2026-04-22T15:30:00Z to T15:55:00Z:
+
+| Timestamp | SampleCount | Sum |
+|---|---|---|
+| 15:37:00Z | 1 | 45 |
+| 15:46:00Z | 1 | 17 |
+| 15:51:00Z | 1 | 2 |
+
+All three replies non-zero. The `a572cf3` empty-reply regression mechanism did not recur across three consecutive happy-path pings.
+
+### What this confirms
+
+- Happy-path `lastActivity` refresh works. Three independent DDB writes captured, matching webhook log timestamps to the millisecond.
+- Watchdog honors the advanced `lastActivity`. The 30-min countdown restarts from each ping, not from task start.
+- `UpdateCommand` on a single attribute did not reproduce the `a572cf3` regression.
+
+### What this does NOT confirm (honest gaps)
+
+- Only the Telegram path was exercised live. WebSocket `/ws` path (`ws-message.ts`) shares the same `routeFargate`, so logically it's fixed, but wasn't directly verified.
+- Sample size is one task and three pings. Enough to see the mechanism; not enough to rule out rare edge cases.
+- A single agent turn taking > 30 min with no new user input will still be killed. The fix doesn't address this — container-side heartbeat is still deferred.
+- The original `a572cf3` failure mechanism was never fully explained. `UpdateCommand` avoids the suspected whole-item-replace race, but "no repeat across 3 pings" is the best signal we have, not proof.
+
+### Commit references
+
+- `e6afd27 fix(watchdog): raise INACTIVE and INACTIVITY timeouts to 30 min` (defense-in-depth, already on fork, cherry-picked to PR)
+- `506ff9c fix(gateway): refresh lastActivity when routing to running container` (new, on PR branch `fix/watchdog-lastactivity-refresh`)
+- `6c37938` same fix on fork branch `fix/watchdog-timeouts-30min` to match deployed state
+- Upstream PR: https://github.com/serithemage/serverless-openclaw/pull/29 (all 9 CI checks green, MERGEABLE)
