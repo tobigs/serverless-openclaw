@@ -154,3 +154,27 @@ Live verification, task `3f7fc447` started 11:45:13 UTC+2:
 The 5m20s advance of `lastActivity` past `startedAt` is only possible through the new `putTaskState` call added to `routeFargate`'s happy path. Fix confirmed live.
 
 Unrelated pre-existing issue observed during verification: the OpenClaw container's built-in Telegram provider emits `getUpdates` 409 conflicts every 30 s because the gateway-configured webhook owns the Telegram channel. The previous (pre-deploy) task exhibited the same 31 conflicts. This is outside the scope of the watchdog fix and should be tracked separately.
+
+## Post-deploy regression and rollback
+
+Shortly after deployment, the bot stopped replying to Telegram messages despite `MessageLatency` metrics firing normally. The `ResponseLength` (telegram) metric confirmed the agent was yielding zero-length responses on every turn starting at `2026-04-22T09:48 UTC` — the first turn on the redeployed Lambdas. Every bucket before the deploy window (last at `08:14 UTC`, 1h34m earlier) had non-zero responses.
+
+Without a reliable way to reproduce locally in the remaining time, the `routeFargate` happy-path `putTaskState` call (commit `a572cf3`) was reverted in `7c0d603` and `ApiStack` redeployed at 12:13 UTC+2. Two user pings after the rollback produced normal responses (`ResponseLength=22` at `2026-04-22T11:19 UTC`), confirming the reverted change was the cause.
+
+What the rollback keeps live:
+
+- The `INACTIVE_TIMEOUT_MS` and `INACTIVITY_TIMEOUT_MS` bump to 30 min (commit `e6afd27`). This is the safe half of the intended fix — it masks the worst of the sparse-CloudWatch misclassification without touching the message-routing path.
+- Pre-commit secret-scan hook (commit `9762a57`).
+- This investigation document.
+
+What the rollback drops live:
+
+- The `putTaskState` write on the "Running + publicIp" happy path. `lastActivity` is once again only refreshed on task start and prewarm claim — so the original failure mode can still occur, just now bounded by the 30-minute floor rather than 10 or 15.
+
+Unknown: the exact mechanism by which `a572cf3` produced empty responses. The added code is a single `PutCommand` on the `TaskState` table, executed after the bridge responded to the gateway. It cannot directly alter the message payload, the streaming generator, or the callback path. Possible hypotheses (none confirmed):
+
+- Race between the gateway `putTaskState` and the container `lifecycle.updateTaskState("Running")` at boot, producing a state the agent or gateway misinterprets on a subsequent turn. Plausible only for the first message on a new task.
+- The extra Lambda runtime from the DDB round-trip pushing the webhook handler past some implicit deadline, causing Telegram to duplicate-suppress the response. Unlikely given the async callback path is separate from the webhook response.
+- Regression in a code path exercised only by the post-deploy Lambda binary (e.g. a transitive dependency bump picked up during the `cdk deploy` Lambda bundle build) — could be coincidental timing.
+
+Any re-attempt of the `lastActivity` refresh should (a) use `UpdateCommand` rather than `PutCommand` to avoid whole-item replacement races, (b) land behind a feature flag with a one-command kill switch, (c) be deployed with a smoke test that confirms end-to-end "ping → reply" before closing the session.
