@@ -52,6 +52,8 @@ if (formatableFiles.length > 0) {
 
 run("git", ["add", ...stagedFiles]);
 
+run("npm", ["run", "check:secrets"]);
+
 if (docsOnly) {
   console.log("Docs-only commit: skipped npm run check after formatting.");
   process.exit(0);
