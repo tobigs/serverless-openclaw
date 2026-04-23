@@ -219,7 +219,7 @@ describe("shouldExclude", () => {
   });
 
   it("excludes binary/document extensions", () => {
-    expect(shouldExclude("things/manuals/samsung.pdf")).toBe(true);
+    expect(shouldExclude("things/manuals/appliance.pdf")).toBe(true);
     expect(shouldExclude("bin/tool.exe")).toBe(true);
     expect(shouldExclude("lib/foo.so")).toBe(true);
   });
@@ -290,7 +290,7 @@ describe("backupToS3 with exclude list", () => {
     vi.mocked(fs.readdirSync).mockReturnValueOnce([
       { name: "node_modules", isDirectory: () => true, isFile: () => false },
       { name: "shopping-list.md", isDirectory: () => false, isFile: () => true },
-      { name: "samsung.pdf", isDirectory: () => false, isFile: () => true },
+      { name: "appliance.pdf", isDirectory: () => false, isFile: () => true },
     ] as unknown as ReturnType<typeof fs.readdirSync>);
     vi.mocked(fs.readFileSync).mockReturnValue(Buffer.from("content"));
 
