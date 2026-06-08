@@ -39,6 +39,8 @@ export async function notifyTelegram(
 }
 
 export function getTelegramChatId(userId: string): string | null {
-  const prefix = "telegram:";
-  return userId.startsWith(prefix) ? userId.slice(prefix.length) : null;
+  // Matches "telegram:{id}" and "telegram-{botId}:{id}"
+  if (!userId.startsWith("telegram")) return null;
+  const colonIdx = userId.indexOf(":");
+  return colonIdx !== -1 ? userId.slice(colonIdx + 1) : null;
 }

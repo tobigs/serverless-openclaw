@@ -16,6 +16,68 @@ import { sendTelegramMessage } from "../services/telegram.js";
 import { resolveUserId, verifyOtpAndLink } from "../services/identity.js";
 import { resolveSecrets } from "../services/secrets.js";
 import { invokeLambdaAgent } from "../services/lambda-agent.js";
+import type { ExtraTelegramBot } from "@serverless-openclaw/shared";
+
+/** Parse EXTRA_TELEGRAM_BOTS env var — returns [] if unset or invalid */
+function parseExtraBots(): ExtraTelegramBot[] {
+  const raw = process.env.EXTRA_TELEGRAM_BOTS;
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as ExtraTelegramBot[];
+  } catch {
+    console.warn("[telegram] failed to parse EXTRA_TELEGRAM_BOTS, ignoring");
+    return [];
+  }
+}
+
+interface BotContext {
+  botId: string;
+  /** userId namespace prefix, e.g. "telegram" or "telegram-coach" */
+  userIdPrefix: string;
+  ssmBotTokenPath: string;
+  ssmWebhookSecretPath: string;
+}
+
+/** Identify which bot this request is for by matching the secret token header */
+async function resolveBotContext(
+  secretTokenHeader: string | undefined,
+  resolveSecretsImpl: (paths: string[]) => Promise<Map<string, string>>,
+): Promise<BotContext | null> {
+  const extraBots = parseExtraBots();
+
+  // Build list of all bots: primary first, then extras
+  const candidates: BotContext[] = [
+    {
+      botId: "default",
+      userIdPrefix: "telegram",
+      ssmBotTokenPath: process.env.SSM_TELEGRAM_BOT_TOKEN!,
+      ssmWebhookSecretPath: process.env.SSM_TELEGRAM_SECRET_TOKEN!,
+    },
+    ...extraBots.map((b) => ({
+      botId: b.id,
+      userIdPrefix: `telegram-${b.id}`,
+      ssmBotTokenPath: b.ssmBotToken,
+      ssmWebhookSecretPath: b.ssmWebhookSecret,
+    })),
+  ];
+
+  // Resolve all webhook secrets in one batch
+  const secretPaths = candidates.map((c) => c.ssmWebhookSecretPath);
+  const secrets = await resolveSecretsImpl(secretPaths);
+
+  for (const candidate of candidates) {
+    const expected = secrets.get(candidate.ssmWebhookSecretPath) ?? "";
+    if (
+      secretTokenHeader &&
+      expected &&
+      secretTokenHeader.length === expected.length &&
+      timingSafeEqual(Buffer.from(secretTokenHeader), Buffer.from(expected))
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ecs = new ECSClient({});
@@ -36,24 +98,29 @@ export async function handler(event: {
   headers: Record<string, string | undefined>;
   body?: string;
 }): Promise<APIGatewayProxyResultV2> {
-  const secrets = await resolveSecrets([
+  const secretToken = event.headers["x-telegram-bot-api-secret-token"];
+
+  // Identify which bot this request is for — resolves secrets for all bots in one batch
+  const extraBots = parseExtraBots();
+  const allSsmPaths = [
     process.env.SSM_BRIDGE_AUTH_TOKEN!,
     process.env.SSM_TELEGRAM_BOT_TOKEN!,
     process.env.SSM_TELEGRAM_SECRET_TOKEN!,
-  ]);
+    ...extraBots.flatMap((b) => [b.ssmBotToken, b.ssmWebhookSecret]),
+  ];
+  const secrets = await resolveSecrets(allSsmPaths);
 
-  const secretToken = event.headers["x-telegram-bot-api-secret-token"];
-  const expectedToken = secrets.get(process.env.SSM_TELEGRAM_SECRET_TOKEN!) ?? "";
+  const botCtx = await resolveBotContext(secretToken, (paths) =>
+    // Re-use already-resolved secrets map
+    Promise.resolve(new Map(paths.map((p) => [p, secrets.get(p) ?? ""]))),
+  );
 
-  const tokenMatch =
-    secretToken &&
-    expectedToken &&
-    secretToken.length === expectedToken.length &&
-    timingSafeEqual(Buffer.from(secretToken), Buffer.from(expectedToken));
-  if (!tokenMatch) {
+  if (!botCtx) {
     console.warn("[telegram] auth failed: secret token mismatch");
     return { statusCode: 403, body: JSON.stringify({ error: "Forbidden" }) };
   }
+
+  const { userIdPrefix, ssmBotTokenPath } = botCtx;
 
   if (!event.body) {
     console.log("[telegram] received empty body, ignoring");
@@ -75,9 +142,9 @@ export async function handler(event: {
 
   const chatId = update.message.chat.id;
   const telegramId = String(update.message.from?.id ?? chatId);
-  const rawUserId = `telegram:${telegramId}`;
-  const connectionId = `telegram:${chatId}`;
-  const botToken = secrets.get(process.env.SSM_TELEGRAM_BOT_TOKEN!) ?? "";
+  const rawUserId = `${userIdPrefix}:${telegramId}`;
+  const connectionId = `${userIdPrefix}:${chatId}`;
+  const botToken = secrets.get(ssmBotTokenPath) ?? "";
   const text = update.message.text;
 
   console.log("[telegram] received message", { chatId, telegramId, textLength: text.length });

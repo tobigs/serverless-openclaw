@@ -7,23 +7,25 @@ import type { ServerMessage } from "@serverless-openclaw/shared";
 const TELEGRAM_MAX_LENGTH = 4096;
 
 function stripMarkdown(text: string): string {
-  return text
-    // Code blocks (```...```)
-    .replace(/```[\s\S]*?```/g, (m) => m.slice(3, -3).trim())
-    // Inline code (`...`)
-    .replace(/`([^`]+)`/g, "$1")
-    // Bold (**...**  or __...__)
-    .replace(/\*\*(.+?)\*\*/g, "$1")
-    .replace(/__(.+?)__/g, "$1")
-    // Italic (*...* or _..._)
-    .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, "$1")
-    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "$1")
-    // Strikethrough (~~...~~)
-    .replace(/~~(.+?)~~/g, "$1")
-    // Links [text](url) → text (url)
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
-    // Heading markers (# ## ### etc.)
-    .replace(/^#{1,6}\s+/gm, "");
+  return (
+    text
+      // Code blocks (```...```)
+      .replace(/```[\s\S]*?```/g, (m) => m.slice(3, -3).trim())
+      // Inline code (`...`)
+      .replace(/`([^`]+)`/g, "$1")
+      // Bold (**...**  or __...__)
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/__(.+?)__/g, "$1")
+      // Italic (*...* or _..._)
+      .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, "$1")
+      .replace(/(?<!\w)_([^_]+)_(?!\w)/g, "$1")
+      // Strikethrough (~~...~~)
+      .replace(/~~(.+?)~~/g, "$1")
+      // Links [text](url) → text (url)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1 ($2)")
+      // Heading markers (# ## ### etc.)
+      .replace(/^#{1,6}\s+/gm, "")
+  );
 }
 
 export class CallbackSender {
@@ -37,7 +39,7 @@ export class CallbackSender {
   }
 
   async send(connectionId: string, data: ServerMessage): Promise<void> {
-    if (connectionId.startsWith("telegram:")) {
+    if (connectionId.startsWith("telegram")) {
       await this.handleTelegram(connectionId, data);
       return;
     }
@@ -57,10 +59,7 @@ export class CallbackSender {
     }
   }
 
-  private async handleTelegram(
-    connectionId: string,
-    data: ServerMessage,
-  ): Promise<void> {
+  private async handleTelegram(connectionId: string, data: ServerMessage): Promise<void> {
     if (!this.telegramBotToken) return;
 
     if (data.type === "stream_chunk" && data.content) {
@@ -87,11 +86,8 @@ export class CallbackSender {
     }
   }
 
-  private async sendTelegramMessage(
-    connectionId: string,
-    text: string,
-  ): Promise<void> {
-    const chatId = connectionId.slice(9); // Remove "telegram:" prefix
+  private async sendTelegramMessage(connectionId: string, text: string): Promise<void> {
+    const chatId = connectionId.slice(connectionId.indexOf(":") + 1);
     const plain = stripMarkdown(text);
     try {
       for (let i = 0; i < plain.length; i += TELEGRAM_MAX_LENGTH) {
@@ -105,16 +101,11 @@ export class CallbackSender {
           },
         );
         if (!resp.ok) {
-          console.error(
-            `[callback] Telegram API error ${resp.status} for ${connectionId}`,
-          );
+          console.error(`[callback] Telegram API error ${resp.status} for ${connectionId}`);
         }
       }
     } catch (err) {
-      console.error(
-        `[callback] Failed to send Telegram message to ${connectionId}:`,
-        err,
-      );
+      console.error(`[callback] Failed to send Telegram message to ${connectionId}:`, err);
     }
   }
 }

@@ -36,14 +36,16 @@ vi.mock("../../src/services/identity.js", () => ({
   verifyOtpAndLink: (...args: unknown[]) => mockVerifyOtpAndLink(...args),
 }));
 
+const mockResolveSecrets = vi.fn().mockResolvedValue(
+  new Map([
+    ["/serverless-openclaw/secrets/bridge-auth-token", "bridge-token"],
+    ["/serverless-openclaw/secrets/telegram-bot-token", "123456:ABC-DEF"],
+    ["/serverless-openclaw/secrets/telegram-webhook-secret", "my-secret"],
+  ]),
+);
+
 vi.mock("../../src/services/secrets.js", () => ({
-  resolveSecrets: vi.fn().mockResolvedValue(
-    new Map([
-      ["/serverless-openclaw/secrets/bridge-auth-token", "bridge-token"],
-      ["/serverless-openclaw/secrets/telegram-bot-token", "123456:ABC-DEF"],
-      ["/serverless-openclaw/secrets/telegram-webhook-secret", "my-secret"],
-    ]),
-  ),
+  resolveSecrets: (...args: unknown[]) => mockResolveSecrets(...args),
 }));
 
 vi.mock("@aws-sdk/lib-dynamodb", () => ({
@@ -88,6 +90,14 @@ describe("telegram-webhook handler", () => {
     mockGetTaskState.mockResolvedValue(null);
     mockResolveUserId.mockImplementation((_send: unknown, uid: string) => Promise.resolve(uid));
     mockVerifyOtpAndLink.mockResolvedValue({ error: "not set" });
+    mockResolveSecrets.mockResolvedValue(
+      new Map([
+        ["/serverless-openclaw/secrets/bridge-auth-token", "bridge-token"],
+        ["/serverless-openclaw/secrets/telegram-bot-token", "123456:ABC-DEF"],
+        ["/serverless-openclaw/secrets/telegram-webhook-secret", "my-secret"],
+      ]),
+    );
+    vi.stubEnv("EXTRA_TELEGRAM_BOTS", "");
   });
 
   it("should return 403 for invalid secret token", async () => {
@@ -389,6 +399,74 @@ describe("telegram-webhook handler", () => {
         userId: "cognito-abc",
       }),
     );
+  });
+
+  // ── Multi-bot tests ──
+
+  it("should route extra bot message with its own userId prefix", async () => {
+    vi.stubEnv(
+      "EXTRA_TELEGRAM_BOTS",
+      JSON.stringify([
+        {
+          id: "coach",
+          ssmBotToken: "/serverless-openclaw/secrets/telegram-coach-bot-token",
+          ssmWebhookSecret: "/serverless-openclaw/secrets/telegram-coach-webhook-secret",
+        },
+      ]),
+    );
+    mockResolveSecrets.mockResolvedValue(
+      new Map([
+        ["/serverless-openclaw/secrets/bridge-auth-token", "bridge-token"],
+        ["/serverless-openclaw/secrets/telegram-bot-token", "123:MAIN"],
+        ["/serverless-openclaw/secrets/telegram-webhook-secret", "main-secret"],
+        ["/serverless-openclaw/secrets/telegram-coach-bot-token", "456:COACH"],
+        ["/serverless-openclaw/secrets/telegram-coach-webhook-secret", "coach-secret"],
+      ]),
+    );
+    mockGetTaskState.mockResolvedValue({ status: "Running", publicIp: "1.2.3.4" });
+
+    const event = makeEvent(
+      { message: { chat: { id: 12345 }, from: { id: 67890 }, text: "hello coach" } },
+      "coach-secret",
+    );
+
+    const result = await handler(event);
+
+    expect(result.statusCode).toBe(200);
+    const routeCall = mockRouteMessage.mock.calls[0][0];
+    expect(routeCall.userId).toBe("telegram-coach:67890");
+    expect(routeCall.connectionId).toBe("telegram-coach:12345");
+  });
+
+  it("should reject extra bot request with wrong secret", async () => {
+    vi.stubEnv(
+      "EXTRA_TELEGRAM_BOTS",
+      JSON.stringify([
+        {
+          id: "coach",
+          ssmBotToken: "/serverless-openclaw/secrets/telegram-coach-bot-token",
+          ssmWebhookSecret: "/serverless-openclaw/secrets/telegram-coach-webhook-secret",
+        },
+      ]),
+    );
+    mockResolveSecrets.mockResolvedValue(
+      new Map([
+        ["/serverless-openclaw/secrets/bridge-auth-token", "bridge-token"],
+        ["/serverless-openclaw/secrets/telegram-bot-token", "123:MAIN"],
+        ["/serverless-openclaw/secrets/telegram-webhook-secret", "main-secret"],
+        ["/serverless-openclaw/secrets/telegram-coach-bot-token", "456:COACH"],
+        ["/serverless-openclaw/secrets/telegram-coach-webhook-secret", "coach-secret"],
+      ]),
+    );
+
+    const event = makeEvent(
+      { message: { chat: { id: 12345 }, from: { id: 67890 }, text: "hello" } },
+      "wrong-secret",
+    );
+
+    const result = await handler(event);
+    expect(result.statusCode).toBe(403);
+    expect(mockRouteMessage).not.toHaveBeenCalled();
   });
 
   it("should include TELEGRAM_CHAT_ID in env when userId is resolved", async () => {

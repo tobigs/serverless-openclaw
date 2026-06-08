@@ -6,8 +6,9 @@ export async function sendTelegramMessage(
   chatId: string,
   text: string,
 ): Promise<void> {
-  // Strip "telegram:" prefix if present (connectionId format)
-  const resolvedChatId = chatId.startsWith("telegram:") ? chatId.slice(9) : chatId;
+  // Strip "telegram[...]:NNN" prefix if present (connectionId format)
+  const colonIdx = chatId.indexOf(":");
+  const resolvedChatId = colonIdx !== -1 ? chatId.slice(colonIdx + 1) : chatId;
 
   try {
     await fetchFn(`https://api.telegram.org/bot${botToken}/sendMessage`, {

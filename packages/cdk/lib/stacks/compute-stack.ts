@@ -9,7 +9,8 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
 import { BRIDGE_PORT, TABLE_NAMES } from "@serverless-openclaw/shared";
-import { SSM_PARAMS, SSM_SECRETS } from "./ssm-params.js";
+import type { ExtraTelegramBot } from "@serverless-openclaw/shared";
+import { SSM_PARAMS, SSM_SECRETS, extraBotSsmPaths } from "./ssm-params.js";
 
 export interface ComputeStackProps extends cdk.StackProps {
   vpc: ec2.IVpc;
@@ -39,23 +40,43 @@ export class ComputeStack extends cdk.Stack {
 
     // SSM SecureString parameter references (manually created)
     const bridgeAuthToken = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this, "BridgeAuthToken",
+      this,
+      "BridgeAuthToken",
       { parameterName: SSM_SECRETS.BRIDGE_AUTH_TOKEN },
     );
     const openclawGatewayToken = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this, "OpenclawGatewayToken",
+      this,
+      "OpenclawGatewayToken",
       { parameterName: SSM_SECRETS.OPENCLAW_GATEWAY_TOKEN },
     );
-    const anthropicApiKey = props.aiProvider !== "bedrock"
-      ? ssm.StringParameter.fromSecureStringParameterAttributes(
-          this, "AnthropicApiKey",
-          { parameterName: SSM_SECRETS.ANTHROPIC_API_KEY },
-        )
-      : undefined;
+    const anthropicApiKey =
+      props.aiProvider !== "bedrock"
+        ? ssm.StringParameter.fromSecureStringParameterAttributes(this, "AnthropicApiKey", {
+            parameterName: SSM_SECRETS.ANTHROPIC_API_KEY,
+          })
+        : undefined;
     const telegramBotToken = ssm.StringParameter.fromSecureStringParameterAttributes(
-      this, "TelegramBotToken",
+      this,
+      "TelegramBotToken",
       { parameterName: SSM_SECRETS.TELEGRAM_BOT_TOKEN },
     );
+
+    // Extra Telegram bots — one SSM secret per bot token
+    const extraBots: ExtraTelegramBot[] = JSON.parse(
+      process.env.EXTRA_TELEGRAM_BOTS ?? "[]",
+    ) as ExtraTelegramBot[];
+
+    const extraBotSecrets: Record<string, ecs.Secret> = {};
+    for (const bot of extraBots) {
+      const paths = extraBotSsmPaths(bot.id);
+      const param = ssm.StringParameter.fromSecureStringParameterAttributes(
+        this,
+        `TelegramBotToken${bot.id}`,
+        { parameterName: paths.botToken },
+      );
+      extraBotSecrets[`TELEGRAM_BOT_TOKEN_${bot.id.toUpperCase()}`] =
+        ecs.Secret.fromSsmParameter(param);
+    }
 
     // ECS Cluster — FARGATE_SPOT only
     this.cluster = new ecs.Cluster(this, "Cluster", {
@@ -98,12 +119,16 @@ export class ComputeStack extends cdk.Stack {
         AI_PROVIDER: props.aiProvider ?? "anthropic",
         ...(props.aiModel ? { AI_MODEL: props.aiModel } : {}),
         AWS_REGION: this.region,
+        ...(extraBots.length > 0 ? { EXTRA_TELEGRAM_BOTS: JSON.stringify(extraBots) } : {}),
       },
       secrets: {
         BRIDGE_AUTH_TOKEN: ecs.Secret.fromSsmParameter(bridgeAuthToken),
         OPENCLAW_GATEWAY_TOKEN: ecs.Secret.fromSsmParameter(openclawGatewayToken),
-        ...(anthropicApiKey ? { ANTHROPIC_API_KEY: ecs.Secret.fromSsmParameter(anthropicApiKey) } : {}),
+        ...(anthropicApiKey
+          ? { ANTHROPIC_API_KEY: ecs.Secret.fromSsmParameter(anthropicApiKey) }
+          : {}),
         TELEGRAM_BOT_TOKEN: ecs.Secret.fromSsmParameter(telegramBotToken),
+        ...extraBotSecrets,
       },
       logging: ecs.LogDrivers.awsLogs({
         logGroup,

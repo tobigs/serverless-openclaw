@@ -230,6 +230,27 @@ telegram-webhook: ## Register Telegram webhook
 	TELEGRAM_SECRET_TOKEN=$(SECRET) \
 	./scripts/setup-telegram-webhook.sh
 
+telegram-webhook-extra: ## Register webhook for an extra bot (BOT_ID=coach BOT_TOKEN=xxx)
+	@test -n "$(BOT_ID)" || (echo "Set BOT_ID (e.g. BOT_ID=coach)" && exit 1)
+	@test -n "$(BOT_TOKEN)" || (echo "Set BOT_TOKEN" && exit 1)
+	$(eval API_URL := $(shell aws cloudformation describe-stacks --stack-name ApiStack \
+		--query "Stacks[0].Outputs[?OutputKey=='HttpApiEndpoint'].OutputValue" \
+		--output text --profile $(AWS_PROFILE) --region $(AWS_REGION)))
+	$(eval SECRET := $(shell openssl rand -hex 32))
+	@aws ssm put-parameter \
+		--name /serverless-openclaw/secrets/telegram-$(BOT_ID)-bot-token \
+		--type SecureString --value "$(BOT_TOKEN)" --overwrite \
+		--profile $(AWS_PROFILE) --region $(AWS_REGION) > /dev/null
+	@aws ssm put-parameter \
+		--name /serverless-openclaw/secrets/telegram-$(BOT_ID)-webhook-secret \
+		--type SecureString --value "$(SECRET)" --overwrite \
+		--profile $(AWS_PROFILE) --region $(AWS_REGION) > /dev/null
+	TELEGRAM_BOT_TOKEN=$(BOT_TOKEN) \
+	WEBHOOK_URL=$(API_URL)/telegram \
+	TELEGRAM_SECRET_TOKEN=$(SECRET) \
+	./scripts/setup-telegram-webhook.sh
+	@echo "✅ Webhook registered for bot: $(BOT_ID)"
+
 telegram-status: ## Check Telegram webhook status
 	@curl -s "https://api.telegram.org/bot$(TELEGRAM_BOT_TOKEN)/getWebhookInfo" | \
 		python3 -m json.tool 2>/dev/null || \

@@ -24,7 +24,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as logs from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 import { WATCHDOG_INTERVAL_MINUTES } from "@serverless-openclaw/shared";
-import { SSM_PARAMS, SSM_SECRETS } from "./ssm-params.js";
+import { SSM_PARAMS, SSM_SECRETS, extraBotSsmPaths } from "./ssm-params.js";
+import type { ExtraTelegramBot } from "@serverless-openclaw/shared";
 
 export interface ApiStackProps extends cdk.StackProps {
   vpc?: ec2.IVpc;
@@ -206,12 +207,28 @@ export class ApiStack extends cdk.Stack {
     );
     telegramWebhookFn.addEnvironment("SSM_TELEGRAM_BOT_TOKEN", SSM_SECRETS.TELEGRAM_BOT_TOKEN);
 
+    // Inject extra bots config and grant SSM access for their secrets
+    const extraBots: ExtraTelegramBot[] = JSON.parse(
+      process.env.EXTRA_TELEGRAM_BOTS ?? "[]",
+    ) as ExtraTelegramBot[];
+
+    if (extraBots.length > 0) {
+      telegramWebhookFn.addEnvironment("EXTRA_TELEGRAM_BOTS", JSON.stringify(extraBots));
+    }
+
+    // Collect all extra bot SSM paths for IAM grant
+    const extraBotSsmResources = extraBots.flatMap((b) => {
+      const paths = extraBotSsmPaths(b.id);
+      return [paths.botToken, paths.webhookSecret];
+    });
+
     // Grant SSM read access for secret resolution at runtime
+    const allSsmSecretPaths = [...Object.values(SSM_SECRETS), ...extraBotSsmResources];
     for (const fn of secretFunctions) {
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           actions: ["ssm:GetParameters"],
-          resources: Object.values(SSM_SECRETS).map(
+          resources: allSsmSecretPaths.map(
             (p) => `arn:aws:ssm:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:parameter${p}`,
           ),
         }),
