@@ -72,24 +72,29 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   agents.defaults = defaults;
   config.agents = agents;
 
-  // Register Google Workspace MCP if OAuth client creds were synced from S3
-  const credsDir = join(homedir(), ".google_workspace_mcp", "credentials");
-  const clientId = readTrimmed(join(credsDir, "client_id.txt"));
-  const clientSecret = readTrimmed(join(credsDir, "client_secret.txt"));
-  if (clientId && clientSecret) {
-    const mcp = (config.mcp ?? {}) as Record<string, unknown>;
-    const servers = (mcp.servers ?? {}) as Record<string, unknown>;
-    servers["google-workspace"] = {
-      command: "uvx",
-      args: ["workspace-mcp", "--tools", "gmail", "calendar", "tasks"],
-      env: {
-        GOOGLE_OAUTH_CLIENT_ID: clientId,
-        GOOGLE_OAUTH_CLIENT_SECRET: clientSecret,
-        OAUTHLIB_INSECURE_TRANSPORT: "1",
-      },
-    };
-    mcp.servers = servers;
-    config.mcp = mcp;
+  // Register Google Workspace MCP if OAuth client creds were synced from S3.
+  // NOTE: OpenClaw 2026.2.13 rejects the `mcp` root key as unrecognized. Keep
+  // this code in place for a future OpenClaw upgrade, but gate it behind an
+  // explicit env flag so it stays off on 2026.2.13.
+  if (process.env.ENABLE_MCP === "true") {
+    const credsDir = join(homedir(), ".google_workspace_mcp", "credentials");
+    const clientId = readTrimmed(join(credsDir, "client_id.txt"));
+    const clientSecret = readTrimmed(join(credsDir, "client_secret.txt"));
+    if (clientId && clientSecret) {
+      const mcp = (config.mcp ?? {}) as Record<string, unknown>;
+      const servers = (mcp.servers ?? {}) as Record<string, unknown>;
+      servers["google-workspace"] = {
+        command: "uvx",
+        args: ["workspace-mcp", "--tools", "gmail", "calendar", "tasks"],
+        env: {
+          GOOGLE_OAUTH_CLIENT_ID: clientId,
+          GOOGLE_OAUTH_CLIENT_SECRET: clientSecret,
+          OAUTHLIB_INSECURE_TRANSPORT: "1",
+        },
+      };
+      mcp.servers = servers;
+      config.mcp = mcp;
+    }
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");

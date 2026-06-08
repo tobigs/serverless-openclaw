@@ -64,6 +64,7 @@ export interface RouteDeps {
   getTaskState: (userId: string) => Promise<TaskStateItem | null>;
   startTask: (params: StartTaskParams) => Promise<string>;
   putTaskState: (item: TaskStateItem) => Promise<void>;
+  updateLastActivity: (userId: string) => Promise<void>;
   savePendingMessage: (item: PendingMessageItem) => Promise<void>;
   deleteTaskState: (userId: string) => Promise<void>;
   startTaskParams: StartTaskParams;
@@ -92,6 +93,14 @@ async function routeFargate(
         connectionId: deps.connectionId,
         callbackUrl: deps.callbackUrl,
       });
+      // Refresh lastActivity so the watchdog doesn't kill an active container.
+      // UpdateCommand (single attribute) avoids clobbering concurrent writes
+      // from the container's lifecycle.updateTaskState().
+      try {
+        await deps.updateLastActivity(deps.userId);
+      } catch (err) {
+        console.warn("Failed to refresh lastActivity, continuing", err);
+      }
       return "sent";
     } catch (err) {
       console.warn(

@@ -19,7 +19,10 @@ vi.mock("@aws-sdk/client-dynamodb", () => ({
 vi.mock("@aws-sdk/client-ecs", () => ({
   ECSClient: vi.fn(() => ({ send: mockEcsSend })),
   StopTaskCommand: vi.fn((params: unknown) => ({ input: params, _tag: "StopTaskCommand" })),
-  DescribeTasksCommand: vi.fn((params: unknown) => ({ input: params, _tag: "DescribeTasksCommand" })),
+  DescribeTasksCommand: vi.fn((params: unknown) => ({
+    input: params,
+    _tag: "DescribeTasksCommand",
+  })),
 }));
 
 vi.mock("@aws-sdk/client-cloudwatch", () => ({
@@ -31,21 +34,21 @@ describe("watchdog handler", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("ECS_CLUSTER_ARN", "arn:cluster");
-    // Default: CW returns no data → fallback 15-min timeout
+    // Default: CW returns no data → fallback 30-min timeout
     mockCloudWatchSend.mockResolvedValue({ Datapoints: [] });
   });
 
-  it("should stop tasks inactive for more than 15 minutes", async () => {
+  it("should stop tasks inactive for more than 30 minutes", async () => {
     const { handler } = await import("../../src/handlers/watchdog.js");
 
-    const oldTime = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const oldTime = new Date(Date.now() - 35 * 60 * 1000).toISOString();
     mockDynamoSend.mockResolvedValueOnce({
       Items: [
         {
           PK: "USER#user-1",
           taskArn: "arn:task-1",
           status: "Running",
-          startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          startedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
           lastActivity: oldTime,
         },
       ],
@@ -303,7 +306,7 @@ describe("watchdog handler", () => {
   it("should stop tasks with expired prewarmUntil when inactive", async () => {
     const { handler } = await import("../../src/handlers/watchdog.js");
 
-    const oldTime = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const oldTime = new Date(Date.now() - 35 * 60 * 1000).toISOString();
     mockDynamoSend.mockResolvedValueOnce({
       Items: [
         {
@@ -311,7 +314,7 @@ describe("watchdog handler", () => {
           taskArn: "arn:prewarm-task",
           status: "Running",
           publicIp: "1.2.3.4",
-          startedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          startedAt: new Date(Date.now() - 40 * 60 * 1000).toISOString(),
           lastActivity: oldTime,
           prewarmUntil: Date.now() - 5 * 60 * 1000, // expired 5 min ago
         },
@@ -380,7 +383,7 @@ describe("watchdog handler", () => {
       );
     });
 
-    it("should use 10-min timeout during inactive hours (< 2 total datapoints at current hour)", async () => {
+    it("should use 30-min timeout during inactive hours (< 2 total datapoints at current hour)", async () => {
       const { handler } = await import("../../src/handlers/watchdog.js");
 
       const now = new Date();
@@ -388,18 +391,15 @@ describe("watchdog handler", () => {
 
       // First channel (telegram): 1 datapoint at current hour
       mockCloudWatchSend.mockResolvedValueOnce({
-        Datapoints: [
-          { Timestamp: createTimestampForKSTHour(currentHourKST, 1), SampleCount: 1 },
-        ],
+        Datapoints: [{ Timestamp: createTimestampForKSTHour(currentHourKST, 1), SampleCount: 1 }],
       });
       // Second channel (web): 0 datapoints → total = 1, below threshold of 2
       mockCloudWatchSend.mockResolvedValueOnce({
         Datapoints: [],
       });
 
-      // Task inactive for 12 min — would NOT be stopped with 15-min default,
-      // but SHOULD be stopped with 10-min inactive timeout
-      const lastActivity = new Date(Date.now() - 12 * 60 * 1000).toISOString();
+      // Task inactive for 35 min — exceeds the 30-min inactive timeout
+      const lastActivity = new Date(Date.now() - 35 * 60 * 1000).toISOString();
       mockDynamoSend.mockResolvedValueOnce({
         Items: [
           {
@@ -420,7 +420,7 @@ describe("watchdog handler", () => {
 
       await handler();
 
-      // Should stop — 12 min > 10 min inactive timeout
+      // Should stop — 35 min > 30 min inactive timeout
       expect(mockEcsSend).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({
@@ -463,13 +463,13 @@ describe("watchdog handler", () => {
       );
     });
 
-    it("should fall back to 15-min timeout when CW returns empty data", async () => {
+    it("should fall back to 30-min timeout when CW returns empty data", async () => {
       const { handler } = await import("../../src/handlers/watchdog.js");
 
       mockCloudWatchSend.mockResolvedValue({ Datapoints: [] });
 
-      // Task inactive for 20 min — should be stopped with 15-min fallback
-      const lastActivity = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+      // Task inactive for 35 min — should be stopped with 30-min fallback
+      const lastActivity = new Date(Date.now() - 35 * 60 * 1000).toISOString();
       mockDynamoSend.mockResolvedValueOnce({
         Items: [
           {
@@ -490,7 +490,7 @@ describe("watchdog handler", () => {
 
       await handler();
 
-      // Should stop — 20 min > 15 min fallback
+      // Should stop — 35 min > 30 min fallback
       expect(mockEcsSend).toHaveBeenCalledWith(
         expect.objectContaining({
           input: expect.objectContaining({

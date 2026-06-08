@@ -17,6 +17,8 @@ const detectors = [
   { name: "AWS access key", regex: /\bA(?:KI|SI)A[0-9A-Z]{16}\b/g },
   { name: "GitHub token", regex: /\bgh[opsu]_[A-Za-z0-9]{20,}\b/g },
   { name: "Slack token", regex: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g },
+  { name: "Anthropic API key", regex: /\bsk-ant-[A-Za-z0-9_-]{80,}\b/g },
+  { name: "Telegram bot token", regex: /\b\d{6,12}:[A-Za-z0-9_-]{35}\b/g },
   {
     name: "Private key block",
     regex: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----/g,

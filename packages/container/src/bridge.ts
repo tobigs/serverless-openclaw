@@ -8,6 +8,7 @@ export interface BridgeDeps {
   openclawClient: {
     sendMessage(userId: string, message: string): AsyncGenerator<string>;
     close(): void;
+    connected: boolean;
   };
   callbackSender: {
     send(connectionId: string, data: ServerMessage): Promise<void>;
@@ -20,7 +21,12 @@ export interface BridgeDeps {
   };
   processStartTime: number;
   channel: string;
-  onMessageComplete?: (userId: string, userMsg: string, assistantMsg: string, channel: Channel) => Promise<void>;
+  onMessageComplete?: (
+    userId: string,
+    userMsg: string,
+    assistantMsg: string,
+    channel: Channel,
+  ) => Promise<void>;
   getAndClearHistoryPrefix?: () => string;
 }
 
@@ -34,6 +40,10 @@ export function createApp(deps: BridgeDeps): express.Express {
   app.use(createAuthMiddleware(deps.authToken));
 
   app.get("/health", (_req, res) => {
+    if (!deps.openclawClient.connected) {
+      res.status(503).json({ status: "degraded", gateway: "disconnected" });
+      return;
+    }
     res.json({ status: "ok" });
   });
 
@@ -56,13 +66,11 @@ export function createApp(deps: BridgeDeps): express.Express {
       try {
         let prefix = deps.getAndClearHistoryPrefix?.() ?? "";
         if (body.channel === "telegram") {
-          prefix += "[System: Respond in plain text only. Do not use markdown formatting such as **bold**, *italic*, ```code```, etc.]\n";
+          prefix +=
+            "[System: Respond in plain text only. Do not use markdown formatting such as **bold**, *italic*, ```code```, etc.]\n";
         }
         const messageToSend = prefix ? prefix + body.message! : body.message!;
-        const generator = deps.openclawClient.sendMessage(
-          body.userId!,
-          messageToSend,
-        );
+        const generator = deps.openclawClient.sendMessage(body.userId!, messageToSend);
         let fullResponse = "";
         for await (const chunk of generator) {
           fullResponse += chunk;
@@ -91,18 +99,22 @@ export function createApp(deps: BridgeDeps): express.Express {
 
         // Save conversation to DynamoDB
         if (deps.onMessageComplete && fullResponse) {
-          await deps.onMessageComplete(
-            body.userId!,
-            body.message!,
-            fullResponse,
-            body.channel! as "web" | "telegram",
-          ).catch(() => {});
+          await deps
+            .onMessageComplete(
+              body.userId!,
+              body.message!,
+              fullResponse,
+              body.channel! as "web" | "telegram",
+            )
+            .catch(() => {});
         }
       } catch (err) {
-        await deps.callbackSender.send(body.connectionId!, {
-          type: "error",
-          error: err instanceof Error ? err.message : "Unknown error",
-        }).catch(() => {});
+        await deps.callbackSender
+          .send(body.connectionId!, {
+            type: "error",
+            error: err instanceof Error ? err.message : "Unknown error",
+          })
+          .catch(() => {});
       }
     })();
   });

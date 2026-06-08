@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getTaskState, putTaskState } from "../../src/services/task-state.js";
+import { getTaskState, putTaskState, updateLastActivity } from "../../src/services/task-state.js";
 
 vi.mock("@aws-sdk/lib-dynamodb", () => ({
   GetCommand: vi.fn((params: unknown) => ({ input: params, _tag: "GetCommand" })),
   PutCommand: vi.fn((params: unknown) => ({ input: params, _tag: "PutCommand" })),
+  DeleteCommand: vi.fn((params: unknown) => ({ input: params, _tag: "DeleteCommand" })),
+  UpdateCommand: vi.fn((params: unknown) => ({ input: params, _tag: "UpdateCommand" })),
 }));
 
 describe("task-state service", () => {
@@ -104,6 +106,28 @@ describe("task-state service", () => {
         expect.objectContaining({
           input: expect.objectContaining({
             Item: expect.objectContaining({ ttl: 9999999999 }),
+          }),
+        }),
+      );
+    });
+  });
+
+  describe("updateLastActivity", () => {
+    it("should issue an UpdateCommand touching only lastActivity", async () => {
+      mockSend.mockResolvedValueOnce({});
+
+      await updateLastActivity(mockSend, "user-123");
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          _tag: "UpdateCommand",
+          input: expect.objectContaining({
+            TableName: expect.stringContaining("TaskState"),
+            Key: { PK: "USER#user-123" },
+            UpdateExpression: "SET lastActivity = :la",
+            ExpressionAttributeValues: expect.objectContaining({
+              ":la": expect.any(String),
+            }),
           }),
         }),
       );

@@ -127,6 +127,7 @@ describe("message service", () => {
         getTaskState: vi.fn().mockResolvedValue(null),
         startTask: vi.fn().mockResolvedValue("arn:new-task"),
         putTaskState: vi.fn(),
+        updateLastActivity: vi.fn(),
         savePendingMessage: vi.fn(),
         deleteTaskState: vi.fn(),
         ...overrides,
@@ -151,6 +152,7 @@ describe("message service", () => {
       expect(mockFetch).toHaveBeenCalled();
       expect(deps.startTask).not.toHaveBeenCalled();
       expect(deps.deleteTaskState).not.toHaveBeenCalled();
+      expect(deps.updateLastActivity).toHaveBeenCalledWith("user-123");
     });
 
     it("should save pending + start task when no active task", async () => {

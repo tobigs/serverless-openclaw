@@ -17,6 +17,7 @@ function createMockDeps(): BridgeDeps {
         yield "world!";
       }),
       close: vi.fn(),
+      connected: true,
     },
     callbackSender: {
       send: vi.fn().mockResolvedValue(undefined),
@@ -67,15 +68,13 @@ describe("Bridge HTTP Server", () => {
     });
 
     it("should return 401 without token", async () => {
-      const res = await request(app)
-        .post("/message")
-        .send({
-          userId: "user-1",
-          message: "Hello",
-          channel: "web",
-          connectionId: "conn-123",
-          callbackUrl: "https://example.com/prod",
-        });
+      const res = await request(app).post("/message").send({
+        userId: "user-1",
+        message: "Hello",
+        channel: "web",
+        connectionId: "conn-123",
+        callbackUrl: "https://example.com/prod",
+      });
 
       expect(res.status).toBe(401);
     });
@@ -105,24 +104,18 @@ describe("Bridge HTTP Server", () => {
 
       // Wait for async processing to complete
       await vi.waitFor(() => {
-        expect(deps.openclawClient.sendMessage).toHaveBeenCalledWith(
-          "user-1",
-          "Hello",
-        );
+        expect(deps.openclawClient.sendMessage).toHaveBeenCalledWith("user-1", "Hello");
       });
     });
 
     it("should update lastActivity on message", async () => {
-      await request(app)
-        .post("/message")
-        .set("Authorization", "Bearer test-secret-token")
-        .send({
-          userId: "user-1",
-          message: "Hello",
-          channel: "web",
-          connectionId: "conn-123",
-          callbackUrl: "https://example.com/prod",
-        });
+      await request(app).post("/message").set("Authorization", "Bearer test-secret-token").send({
+        userId: "user-1",
+        message: "Hello",
+        channel: "web",
+        connectionId: "conn-123",
+        callbackUrl: "https://example.com/prod",
+      });
 
       expect(deps.lifecycle.updateLastActivity).toHaveBeenCalled();
     });
