@@ -13,6 +13,9 @@ interface PendingChat {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ReqHandler = { resolve: (payload: any) => void; reject: (err: Error) => void };
 
+const MAX_RECONNECT_DELAY = 10000;
+const INITIAL_RECONNECT_DELAY = 500;
+
 export class OpenClawClient {
   readonly gatewayUrl: string;
   ws: WebSocket | null = null;
@@ -24,6 +27,10 @@ export class OpenClawClient {
   private readyResolve!: () => void;
   private readyReject!: (reason: Error) => void;
   private readyPromise: Promise<void>;
+  private closed = false;
+  private reconnectDelay = INITIAL_RECONNECT_DELAY;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private initialConnect = true;
 
   constructor(baseUrl: string, token: string) {
     this.gatewayUrl = baseUrl;
@@ -35,17 +42,61 @@ export class OpenClawClient {
     this.connect();
   }
 
+  get connected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN && this.sessionKey !== "";
+  }
+
   waitForReady(): Promise<void> {
     return this.readyPromise;
+  }
+
+  private scheduleReconnect(): void {
+    if (this.closed) return;
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, MAX_RECONNECT_DELAY);
+    console.log(`[openclaw-client] reconnecting in ${delay}ms`);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.resetReadyPromise();
+      this.connect();
+    }, delay);
+  }
+
+  private resetReadyPromise(): void {
+    this.readyPromise = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve;
+      this.readyReject = reject;
+    });
   }
 
   private connect(): void {
     this.ws = new WebSocket(this.gatewayUrl);
 
     this.ws.on("error", (err) => {
-      this.readyReject(
-        err instanceof Error ? err : new Error(String(err)),
-      );
+      if (this.initialConnect) {
+        this.readyReject(err instanceof Error ? err : new Error(String(err)));
+      }
+    });
+
+    this.ws.on("close", () => {
+      this.sessionKey = "";
+      // Reject any in-flight requests
+      for (const [, handler] of this.pendingRequests) {
+        handler.reject(new Error("WebSocket closed"));
+      }
+      this.pendingRequests.clear();
+      // Reject active runs
+      for (const [, run] of this.activeRuns) {
+        const err = new Error("WebSocket closed");
+        if (run.chunkReject) {
+          run.chunkReject(err);
+          run.chunkResolve = null;
+          run.chunkReject = null;
+        }
+        run.reject(err);
+      }
+      this.activeRuns.clear();
+      this.scheduleReconnect();
     });
 
     this.ws.on("message", (raw: WebSocket.Data) => {
@@ -84,12 +135,10 @@ export class OpenClawClient {
       // Gateway hello-ok — handshake complete
       if (msg.type === "res" && msg.id === "connect-1" && msg.ok === true) {
         if (msg.payload?.type === "hello-ok") {
-          this.sessionKey =
-            msg.payload?.snapshot?.sessionDefaults?.mainSessionKey ?? "main";
-          console.log(
-            "Gateway handshake complete, sessionKey:",
-            this.sessionKey,
-          );
+          this.sessionKey = msg.payload?.snapshot?.sessionDefaults?.mainSessionKey ?? "main";
+          this.reconnectDelay = INITIAL_RECONNECT_DELAY;
+          this.initialConnect = false;
+          console.log("Gateway handshake complete, sessionKey:", this.sessionKey);
           this.readyResolve();
           return;
         }
@@ -111,9 +160,7 @@ export class OpenClawClient {
           if (msg.ok === true) {
             pending.resolve(msg.payload);
           } else {
-            pending.reject(
-              new Error(msg.error?.message ?? "Request failed"),
-            );
+            pending.reject(new Error(msg.error?.message ?? "Request failed"));
           }
         }
         return;
@@ -162,14 +209,9 @@ export class OpenClawClient {
             resolve({ value: undefined as unknown as string, done: true });
           }
           run.resolve();
-        } else if (
-          payload.state === "error" ||
-          payload.state === "aborted"
-        ) {
+        } else if (payload.state === "error" || payload.state === "aborted") {
           this.activeRuns.delete(runId);
-          const err = new Error(
-            payload.errorMessage ?? `Chat ${payload.state}`,
-          );
+          const err = new Error(payload.errorMessage ?? `Chat ${payload.state}`);
           if (run.chunkReject) {
             const reject = run.chunkReject;
             run.chunkResolve = null;
@@ -183,11 +225,10 @@ export class OpenClawClient {
     });
   }
 
-  async *sendMessage(
-    _userId: string,
-    message: string,
-  ): AsyncGenerator<string> {
-    await this.readyPromise;
+  async *sendMessage(_userId: string, message: string): AsyncGenerator<string> {
+    if (!this.connected) {
+      await this.readyPromise;
+    }
 
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       throw new Error("WebSocket not connected");
@@ -220,11 +261,9 @@ export class OpenClawClient {
     });
 
     // Wait for chat.send response to get runId
-    const responsePromise = new Promise<Record<string, unknown>>(
-      (resolve, reject) => {
-        this.pendingRequests.set(reqId, { resolve, reject });
-      },
-    );
+    const responsePromise = new Promise<Record<string, unknown>>((resolve, reject) => {
+      this.pendingRequests.set(reqId, { resolve, reject });
+    });
 
     this.ws.send(JSON.stringify(request));
 
@@ -248,8 +287,7 @@ export class OpenClawClient {
           chat.chunkReject = reject;
         }),
         completionPromise.then(
-          () =>
-            ({ value: undefined as unknown as string, done: true }) as IteratorResult<string>,
+          () => ({ value: undefined as unknown as string, done: true }) as IteratorResult<string>,
           (err) => {
             throw err;
           },
@@ -264,6 +302,11 @@ export class OpenClawClient {
   }
 
   close(): void {
+    this.closed = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.ws) {
       this.ws.close();
     }
