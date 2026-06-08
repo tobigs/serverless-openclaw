@@ -25,9 +25,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.gateway.port).toBe(18789);
   });
 
@@ -37,9 +35,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.auth.token).toBeUndefined();
   });
 
@@ -49,9 +45,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.auth.token).toBeUndefined();
     expect(written.llm).toBeUndefined();
     expect(written.telegram).toBeUndefined();
@@ -63,9 +57,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json", { llmModel: "claude-sonnet" });
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.agents.defaults.model.primary).toBe("anthropic/claude-sonnet");
   });
 
@@ -75,9 +67,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.llm).toBeUndefined();
     expect(written.agents?.defaults?.model).toBeUndefined();
   });
@@ -106,9 +96,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.gateway.port).toBe(18789);
   });
 
@@ -130,9 +118,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.mcpServers).toEqual(configWithMcp.mcpServers);
   });
 
@@ -149,9 +135,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.skills).toEqual(configWithSkills.skills);
   });
 
@@ -170,10 +154,13 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
-    expect(written.agents).toEqual(configWithAgents.agents);
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents).toEqual({
+      defaults: {
+        ...configWithAgents.agents.defaults,
+        thinking: "medium",
+      },
+    });
   });
 
   it("should preserve gateway.host while overriding gateway.port", () => {
@@ -182,9 +169,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.gateway.port).toBe(18789);
     expect(written.gateway.host).toBe("0.0.0.0");
   });
@@ -202,9 +187,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.gateway.controlUi).toEqual({
       dangerouslyDisableDeviceAuth: true,
     });
@@ -221,9 +204,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json");
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.customSection).toEqual({ foo: "bar" });
     expect(written.anotherSection).toEqual([1, 2, 3]);
   });
@@ -234,9 +215,7 @@ describe("patchConfig", () => {
 
     patchConfig("/path/to/openclaw.json", { workspacePath: "/data/workspace" });
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.agents.defaults.workspace).toBe("/data/workspace");
   });
 
@@ -249,9 +228,7 @@ describe("patchConfig", () => {
       awsRegion: "us-east-1",
     });
 
-    const written = JSON.parse(
-      mockedFs.writeFileSync.mock.calls[0][1] as string,
-    );
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.models.bedrockDiscovery.enabled).toBe(false);
     expect(written.agents.defaults.model.primary).toMatch(/^amazon-bedrock[/]/);
   });
