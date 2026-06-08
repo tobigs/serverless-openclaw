@@ -72,10 +72,11 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   agents.defaults = defaults;
   config.agents = agents;
 
-  // Register Google Workspace MCP if OAuth client creds were synced from S3.
-  // NOTE: OpenClaw 2026.2.13 rejects the `mcp` root key as unrecognized. Keep
-  // this code in place for a future OpenClaw upgrade, but gate it behind an
-  // explicit env flag so it stays off on 2026.2.13.
+  // Strip any `mcp` key written by OpenClaw into the persisted config — the
+  // current OpenClaw version rejects it as unrecognized and exits at startup.
+  // Only re-add it when ENABLE_MCP=true (future upgrade path).
+  delete config.mcp;
+
   if (process.env.ENABLE_MCP === "true") {
     const credsDir = join(homedir(), ".google_workspace_mcp", "credentials");
     const clientId = readTrimmed(join(credsDir, "client_id.txt"));
