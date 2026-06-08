@@ -119,6 +119,7 @@ export class ComputeStack extends cdk.Stack {
         AI_PROVIDER: props.aiProvider ?? "anthropic",
         ...(props.aiModel ? { AI_MODEL: props.aiModel } : {}),
         AWS_REGION: this.region,
+        ...(process.env.THINKING_LEVEL ? { THINKING_LEVEL: process.env.THINKING_LEVEL } : {}),
         ...(extraBots.length > 0 ? { EXTRA_TELEGRAM_BOTS: JSON.stringify(extraBots) } : {}),
       },
       secrets: {

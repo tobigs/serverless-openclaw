@@ -69,7 +69,7 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  defaults.thinking = "low";
+  defaults.thinking = process.env.THINKING_LEVEL ?? "low";
 
   agents.defaults = defaults;
   config.agents = agents;
