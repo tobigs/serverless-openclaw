@@ -158,7 +158,7 @@ describe("patchConfig", () => {
     expect(written.agents).toEqual({
       defaults: {
         ...configWithAgents.agents.defaults,
-        thinking: "medium",
+        thinking: "low",
       },
     });
   });

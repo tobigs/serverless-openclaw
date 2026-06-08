@@ -69,7 +69,7 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  defaults.thinking = "medium";
+  defaults.thinking = "low";
 
   agents.defaults = defaults;
   config.agents = agents;
