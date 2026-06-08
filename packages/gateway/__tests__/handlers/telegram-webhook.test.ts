@@ -377,7 +377,8 @@ describe("telegram-webhook handler", () => {
   });
 
   it("should resolve userId for linked telegram user", async () => {
-    mockResolveUserId.mockResolvedValueOnce("cognito-abc");
+    // resolveUserId is called twice: once for rawUserId, once for taskOwnerId (same value for primary bot)
+    mockResolveUserId.mockResolvedValue("cognito-abc");
     mockGetTaskState.mockResolvedValue({ status: "Running", publicIp: "1.2.3.4" });
 
     const event = makeEvent(
@@ -434,7 +435,8 @@ describe("telegram-webhook handler", () => {
 
     expect(result.statusCode).toBe(200);
     const routeCall = mockRouteMessage.mock.calls[0][0];
-    expect(routeCall.userId).toBe("telegram-coach:67890");
+    // Routes using primary bot's taskOwnerId, but connectionId stays per-bot for replies
+    expect(routeCall.userId).toBe("telegram:67890");
     expect(routeCall.connectionId).toBe("telegram-coach:12345");
   });
 
@@ -470,7 +472,8 @@ describe("telegram-webhook handler", () => {
   });
 
   it("should include TELEGRAM_CHAT_ID in env when userId is resolved", async () => {
-    mockResolveUserId.mockResolvedValueOnce("cognito-abc");
+    // Both resolveUserId calls return "cognito-abc" (primary bot, rawUserId = taskOwnerId)
+    mockResolveUserId.mockResolvedValue("cognito-abc");
     mockGetTaskState.mockResolvedValue(null);
 
     const event = makeEvent(

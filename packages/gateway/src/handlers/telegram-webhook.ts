@@ -144,6 +144,8 @@ export async function handler(event: {
   const telegramId = String(update.message.from?.id ?? chatId);
   const rawUserId = `${userIdPrefix}:${telegramId}`;
   const connectionId = `${userIdPrefix}:${chatId}`;
+  // Extra bots share the primary bot's Fargate task — task is owned by telegram:{id}
+  const taskOwnerId = botCtx.botId === "default" ? rawUserId : `telegram:${telegramId}`;
   const botToken = secrets.get(ssmBotTokenPath) ?? "";
   const text = update.message.text;
 
@@ -195,12 +197,19 @@ export async function handler(event: {
 
   // Resolve telegram userId to linked cognito userId if available
   const userId = await resolveUserId(dynamoSend, rawUserId);
-  console.log("[telegram] resolved userId", { rawUserId, userId, linked: userId !== rawUserId });
+  // Task owner resolution: extra bots share the primary bot's task
+  const resolvedTaskOwnerId = await resolveUserId(dynamoSend, taskOwnerId);
+  console.log("[telegram] resolved userId", {
+    rawUserId,
+    userId,
+    taskOwnerId: resolvedTaskOwnerId,
+    linked: userId !== rawUserId,
+  });
 
   // Cold start reply — only relevant for Fargate (Lambda has no persistent task state)
   const agentRuntime = (process.env.AGENT_RUNTIME as "lambda" | "fargate" | "both") ?? "fargate";
   if (agentRuntime !== "lambda") {
-    const taskState = await getTaskState(dynamoSend, userId);
+    const taskState = await getTaskState(dynamoSend, resolvedTaskOwnerId);
     const needsColdStart = !taskState || taskState.status === "Starting";
     console.log("[telegram] fargate task state", {
       userId,
@@ -218,20 +227,25 @@ export async function handler(event: {
     }
   }
 
-  // Build environment for RunTask — include TELEGRAM_CHAT_ID when using resolved userId
+  // Build environment for RunTask — keyed to task owner, not the per-bot userId
   const taskEnv = [
-    { name: "USER_ID", value: userId },
+    { name: "USER_ID", value: resolvedTaskOwnerId },
     { name: "CALLBACK_URL", value: process.env.WEBSOCKET_CALLBACK_URL ?? "" },
   ];
-  if (userId !== rawUserId) {
+  if (resolvedTaskOwnerId !== taskOwnerId) {
     // Linked user: container needs to know the telegram chat ID for notifications
     taskEnv.push({ name: "TELEGRAM_CHAT_ID", value: String(chatId) });
   }
 
-  console.log("[telegram] routing message", { userId, channel: "telegram", agentRuntime });
+  console.log("[telegram] routing message", {
+    userId,
+    taskOwnerId: resolvedTaskOwnerId,
+    channel: "telegram",
+    agentRuntime,
+  });
   const lambdaAgentFunctionArn = process.env.LAMBDA_AGENT_FUNCTION_ARN ?? "";
   await routeMessage({
-    userId,
+    userId: resolvedTaskOwnerId,
     message: text,
     channel: "telegram",
     connectionId,
