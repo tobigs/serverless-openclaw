@@ -100,6 +100,18 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     workspacePath: "/data/workspace",
   });
 
+  // Build session key map: connectionId prefix → OpenClaw session key
+  // e.g. "telegram-coach" → "agent:coach:main"
+  const sessionKeyMap = new Map<string, string>();
+  try {
+    const extraBots = JSON.parse(process.env.EXTRA_TELEGRAM_BOTS ?? "[]") as Array<{ id: string }>;
+    for (const bot of extraBots) {
+      sessionKeyMap.set(`telegram-${bot.id}`, `agent:${bot.id}:main`);
+    }
+  } catch {
+    /* non-fatal */
+  }
+
   // Phase 3: Bridge server start
   const app = createApp({
     authToken: env.BRIDGE_AUTH_TOKEN,
@@ -108,6 +120,12 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     lifecycle,
     processStartTime: t0,
     channel,
+    resolveSessionKey: (connectionId) => {
+      for (const [prefix, sessionKey] of sessionKeyMap) {
+        if (connectionId.startsWith(prefix + ":")) return sessionKey;
+      }
+      return undefined;
+    },
     onMessageComplete: async (uid: string, userMsg: string, assistantMsg: string, ch: Channel) => {
       await saveMessagePair(dynamoSend, uid, userMsg, assistantMsg, ch);
     },

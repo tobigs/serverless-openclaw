@@ -225,7 +225,11 @@ export class OpenClawClient {
     });
   }
 
-  async *sendMessage(_userId: string, message: string): AsyncGenerator<string> {
+  async *sendMessage(
+    _userId: string,
+    message: string,
+    sessionKeyOverride?: string,
+  ): AsyncGenerator<string> {
     if (!this.connected) {
       await this.readyPromise;
     }
@@ -240,7 +244,7 @@ export class OpenClawClient {
       id: reqId,
       method: "chat.send",
       params: {
-        sessionKey: this.sessionKey,
+        sessionKey: sessionKeyOverride ?? this.sessionKey,
         message,
         idempotencyKey: randomUUID(),
       },

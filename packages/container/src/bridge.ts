@@ -6,10 +6,12 @@ import type { BridgeMessageRequest, ServerMessage, Channel } from "@serverless-o
 export interface BridgeDeps {
   authToken: string;
   openclawClient: {
-    sendMessage(userId: string, message: string): AsyncGenerator<string>;
+    sendMessage(userId: string, message: string, sessionKey?: string): AsyncGenerator<string>;
     close(): void;
     connected: boolean;
   };
+  /** Optional: resolve the OpenClaw session key for a given connectionId */
+  resolveSessionKey?: (connectionId: string) => string | undefined;
   callbackSender: {
     send(connectionId: string, data: ServerMessage): Promise<void>;
   };
@@ -70,7 +72,8 @@ export function createApp(deps: BridgeDeps): express.Express {
             "[System: Respond in plain text only. Do not use markdown formatting such as **bold**, *italic*, ```code```, etc.]\n";
         }
         const messageToSend = prefix ? prefix + body.message! : body.message!;
-        const generator = deps.openclawClient.sendMessage(body.userId!, messageToSend);
+        const sessionKey = deps.resolveSessionKey?.(body.connectionId!);
+        const generator = deps.openclawClient.sendMessage(body.userId!, messageToSend, sessionKey);
         let fullResponse = "";
         for await (const chunk of generator) {
           fullResponse += chunk;

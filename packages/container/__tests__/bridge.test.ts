@@ -104,7 +104,7 @@ describe("Bridge HTTP Server", () => {
 
       // Wait for async processing to complete
       await vi.waitFor(() => {
-        expect(deps.openclawClient.sendMessage).toHaveBeenCalledWith("user-1", "Hello");
+        expect(deps.openclawClient.sendMessage).toHaveBeenCalledWith("user-1", "Hello", undefined);
       });
     });
 
