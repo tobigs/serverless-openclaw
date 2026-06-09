@@ -98,6 +98,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     s3Bucket: env.DATA_BUCKET,
     s3Prefix: `workspaces/${userId}`,
     workspacePath: "/data/workspace",
+    openclawHome: "/home/openclaw/.openclaw",
   });
 
   // Build session key map: connectionId prefix → OpenClaw session key

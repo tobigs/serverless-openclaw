@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { GATEWAY_PORT, resolveProviderConfig } from "@serverless-openclaw/shared";
 import type { AiProvider } from "@serverless-openclaw/shared";
 
@@ -17,40 +18,52 @@ function readTrimmed(path: string): string | undefined {
   return v || undefined;
 }
 
+/**
+ * Restore openclaw.json from S3 before patching.
+ * Allows OpenClaw's self-managed config (agents, skills, tools, mcp) to persist
+ * across cold starts. Falls back silently if no config exists in S3 yet.
+ */
+async function restoreConfigFromS3(configPath: string): Promise<void> {
+  const bucket = process.env.DATA_BUCKET;
+  const userId = process.env.USER_ID;
+  if (!bucket || !userId) return;
+
+  const s3Key = `openclaw-home/${userId}/openclaw.json`;
+  try {
+    const client = new S3Client({});
+    const resp = await client.send(new GetObjectCommand({ Bucket: bucket, Key: s3Key }));
+    if (resp.Body) {
+      const bytes = await resp.Body.transformToByteArray();
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, bytes);
+      console.log("[patch-config] Restored openclaw.json from S3");
+    }
+  } catch {
+    // First launch — no config in S3 yet, proceed with existing file
+  }
+}
+
 export function patchConfig(configPath: string, options?: PatchOptions): void {
   const raw = readFileSync(configPath, "utf-8");
   const config = JSON.parse(raw) as Record<string, Record<string, unknown>>;
 
-  // Set gateway port
+  // ── Mandatory overrides (always applied on top of persisted config) ──
+
+  // Gateway port must always be 18789
   config.gateway = { ...config.gateway, port: GATEWAY_PORT };
 
-  // Allow the agent to self-restart via the gateway restart command
+  // Allow the agent to self-restart
   config.commands = { ...config.commands, restart: true };
 
-  // Remove auth secrets from config (API keys delivered via env vars only)
-  if (config.auth) {
-    delete config.auth.token;
-  }
-
-  // Remove legacy llm section — not a valid OpenClaw v2026+ key, may contain secrets
+  // Remove secrets — API keys delivered via env vars only
+  if (config.auth) delete config.auth.token;
   delete config.llm;
-
-  // Remove Telegram section entirely (webhook-only, configured via env)
   delete config.telegram;
 
-  // Clear legacy models section — bedrockDiscovery was removed in OpenClaw 2026.6+
-  delete config.models;
-
-  if (options?.aiProvider === "bedrock") {
-    // Signal that AWS credentials are available via SDK chain (EC2/Fargate IAM role)
-    process.env.AWS_PROFILE = "default";
-  }
-
-  // Set agent defaults (model and workspace)
+  // Set model and workspace
   const agents = (config.agents ?? {}) as Record<string, unknown>;
   const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
 
-  // Set model in OpenClaw's provider/model format (e.g. "amazon-bedrock/eu.anthropic...")
   if (options?.aiProvider || options?.llmModel) {
     const providerConfig = resolveProviderConfig({
       AI_PROVIDER: options.aiProvider,
@@ -66,29 +79,14 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  // NOTE: agents.defaults.thinking is not a valid key in OpenClaw 2026.2.13 — omit it.
-  // Use /think command in Telegram to set thinking level per session instead.
+  if (options?.aiProvider === "bedrock") {
+    process.env.AWS_PROFILE = "default";
+  }
 
   agents.defaults = defaults;
   config.agents = agents;
 
-  // NOTE: Extra bot plugin entries (token, agentProfile) are not valid keys in
-  // OpenClaw 2026.2.13. Bots are registered in the Lambda layer only; the container
-  // uses connectionId routing to send replies back to the correct bot token.
-  // Clean up any stale entries written by a previous version of patch-config.
-  const plugins = (config.plugins ?? {}) as Record<string, unknown>;
-  const entries = (plugins.entries ?? {}) as Record<string, unknown>;
-  for (const key of Object.keys(entries)) {
-    if (key.startsWith("telegram-")) delete entries[key];
-  }
-  plugins.entries = entries;
-  config.plugins = plugins;
-
-  // Strip any `mcp` key written by OpenClaw into the persisted config — the
-  // current OpenClaw version rejects it as unrecognized and exits at startup.
-  // Only re-add it when ENABLE_MCP=true (future upgrade path).
-  delete config.mcp;
-
+  // ── MCP: register Google Workspace if credentials are available ──
   if (process.env.ENABLE_MCP === "true") {
     const credsDir = join(homedir(), ".google_workspace_mcp", "credentials");
     const clientId = readTrimmed(join(credsDir, "client_id.txt"));
@@ -124,6 +122,15 @@ if (process.argv[1]?.endsWith("patch-config.js")) {
   const llmModel = process.env.AI_MODEL ?? undefined;
   const awsRegion = process.env.AWS_REGION ?? undefined;
   const workspacePath = process.env.OPENCLAW_WORKSPACE ?? "/data/workspace";
-  patchConfig(configPath, { aiProvider, llmModel, awsRegion, workspacePath });
-  console.log("[patch-config] Config patched successfully");
+
+  // Restore persisted config from S3 before patching
+  restoreConfigFromS3(configPath)
+    .then(() => {
+      patchConfig(configPath, { aiProvider, llmModel, awsRegion, workspacePath });
+      console.log("[patch-config] Config patched successfully");
+    })
+    .catch((err) => {
+      console.error("[patch-config] Fatal error:", err);
+      process.exit(1);
+    });
 }
