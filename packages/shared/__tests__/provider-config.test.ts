@@ -10,18 +10,22 @@ describe("resolveBedrockModel", () => {
     expect(resolveBedrockModel()).toBe(BEDROCK_BASE_MODEL);
   });
 
-  it("returns base model regardless of region (no CRIS prefix in 2026.6+)", () => {
-    expect(resolveBedrockModel("eu-central-1")).toBe(BEDROCK_BASE_MODEL);
-    expect(resolveBedrockModel("us-east-1")).toBe(BEDROCK_BASE_MODEL);
-    expect(resolveBedrockModel("ap-northeast-1")).toBe(BEDROCK_BASE_MODEL);
+  it("prepends CRIS prefix for known regions", () => {
+    expect(resolveBedrockModel("eu-central-1")).toBe(`eu.${BEDROCK_BASE_MODEL}`);
+    expect(resolveBedrockModel("us-east-1")).toBe(`us.${BEDROCK_BASE_MODEL}`);
+    expect(resolveBedrockModel("ap-northeast-1")).toBe(`apac.${BEDROCK_BASE_MODEL}`);
+  });
+
+  it("returns base model for unknown region (no CRIS prefix)", () => {
+    expect(resolveBedrockModel("sa-east-1")).toBe(BEDROCK_BASE_MODEL);
   });
 
   it("returns AI_MODEL override as-is", () => {
     expect(resolveBedrockModel("eu-central-1", "my-custom-model")).toBe("my-custom-model");
   });
 
-  it("ignores empty string AI_MODEL and returns base model", () => {
-    expect(resolveBedrockModel("eu-central-1", "")).toBe(BEDROCK_BASE_MODEL);
+  it("ignores empty string AI_MODEL and uses region resolution", () => {
+    expect(resolveBedrockModel("eu-central-1", "")).toBe(`eu.${BEDROCK_BASE_MODEL}`);
   });
 });
 
@@ -31,7 +35,7 @@ describe("resolveProviderConfig", () => {
       AI_PROVIDER: "bedrock",
       AWS_REGION: "eu-central-1",
     });
-    expect(config.defaultModel).toBe("anthropic.claude-sonnet-4-6");
+    expect(config.defaultModel).toBe("eu.anthropic.claude-sonnet-4-6");
     expect(config.openclawProvider).toBe("amazon-bedrock");
     expect(config.openclawApi).toBe("bedrock-converse-stream");
   });
