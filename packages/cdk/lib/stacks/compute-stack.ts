@@ -74,7 +74,8 @@ export class ComputeStack extends cdk.Stack {
         `TelegramBotToken${bot.id}`,
         { parameterName: paths.botToken },
       );
-      extraBotSecrets[`TELEGRAM_BOT_TOKEN_${bot.id.toUpperCase()}`] =
+      // Use BRIDGE_TELEGRAM_TOKEN_{ID} so OpenClaw never sees TELEGRAM_BOT_TOKEN_* vars
+      extraBotSecrets[`BRIDGE_TELEGRAM_TOKEN_${bot.id.toUpperCase()}`] =
         ecs.Secret.fromSsmParameter(param);
     }
 
@@ -128,7 +129,8 @@ export class ComputeStack extends cdk.Stack {
         ...(anthropicApiKey
           ? { ANTHROPIC_API_KEY: ecs.Secret.fromSsmParameter(anthropicApiKey) }
           : {}),
-        TELEGRAM_BOT_TOKEN: ecs.Secret.fromSsmParameter(telegramBotToken),
+        // Renamed so OpenClaw 2026.6+ does not auto-activate native Telegram plugin
+        BRIDGE_TELEGRAM_TOKEN: ecs.Secret.fromSsmParameter(telegramBotToken),
         ...extraBotSecrets,
       },
       logging: ecs.LogDrivers.awsLogs({

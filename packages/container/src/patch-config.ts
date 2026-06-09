@@ -63,7 +63,16 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   // Remove secrets — API keys delivered via env vars only
   if (config.auth) delete config.auth.token;
   delete config.llm;
+  // Strip all Telegram config — webhook-only, token managed by Lambda layer.
+  // Also strip channels.telegram in case OpenClaw wrote it to persisted config.
   delete config.telegram;
+  if (config.channels) delete (config.channels as Record<string, unknown>).telegram;
+  // Strip any native telegram plugin entry from persisted config
+  const plugins = (config.plugins ?? {}) as Record<string, unknown>;
+  const entries = (plugins.entries ?? {}) as Record<string, unknown>;
+  delete entries.telegram;
+  plugins.entries = entries;
+  config.plugins = plugins;
 
   // Set model and workspace
   const agents = (config.agents ?? {}) as Record<string, unknown>;
