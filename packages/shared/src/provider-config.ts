@@ -8,9 +8,9 @@ export interface ProviderConfig {
   defaultModel: string;
 }
 
-// OpenClaw 2026.6+ uses simplified model IDs (not raw AWS Bedrock ARN format).
-// e.g. "claude-opus-4.6" instead of "eu.anthropic.claude-opus-4-6-v1"
-export const BEDROCK_BASE_MODEL = "claude-sonnet-4.6";
+// OpenClaw 2026.6+ uses Bedrock Converse API model IDs without CRIS region prefix.
+// Format: "anthropic.claude-{name}-{major}-{minor}" (no -v1 suffix, no eu./us. prefix)
+export const BEDROCK_BASE_MODEL = "anthropic.claude-sonnet-4-6";
 
 export const PROVIDER_DEFAULTS = {
   anthropic: {
