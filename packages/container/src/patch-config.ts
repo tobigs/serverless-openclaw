@@ -202,9 +202,7 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
           }
           entry.thinkingDefault =
             bot.agentProfile?.thinking ?? process.env.THINKING_LEVEL ?? "adaptive";
-          if (bot.agentProfile?.systemPrompt) {
-            entry.systemPromptArg = bot.agentProfile.systemPrompt;
-          }
+          // systemPrompt is not a valid AgentEntrySchema field — belongs in workspace files
           newList.push(entry);
         }
       }
