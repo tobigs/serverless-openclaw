@@ -79,6 +79,11 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
+  // Set thinking level from env (e.g. THINKING_LEVEL=low). Valid: off|minimal|low|medium|high|xhigh|adaptive|max
+  if (process.env.THINKING_LEVEL) {
+    defaults.thinkingDefault = process.env.THINKING_LEVEL;
+  }
+
   if (options?.aiProvider === "bedrock") {
     process.env.AWS_PROFILE = "default";
   }
