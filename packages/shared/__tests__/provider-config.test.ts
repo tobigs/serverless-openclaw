@@ -31,7 +31,7 @@ describe("resolveProviderConfig", () => {
       AI_PROVIDER: "bedrock",
       AWS_REGION: "eu-central-1",
     });
-    expect(config.defaultModel).toBe(BEDROCK_BASE_MODEL);
+    expect(config.defaultModel).toBe("claude-sonnet-4.6");
     expect(config.openclawProvider).toBe("amazon-bedrock");
     expect(config.openclawApi).toBe("bedrock-converse-stream");
   });
