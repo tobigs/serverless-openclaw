@@ -135,7 +135,9 @@ export class OpenClawClient {
       // Gateway hello-ok — handshake complete
       if (msg.type === "res" && msg.id === "connect-1" && msg.ok === true) {
         if (msg.payload?.type === "hello-ok") {
-          this.sessionKey = msg.payload?.snapshot?.sessionDefaults?.mainSessionKey ?? "main";
+          // Use "agent:main:main" as the stable default — mainSessionKey from the snapshot
+          // is unreliable after gateway restarts triggered by config rewrites.
+          this.sessionKey = "agent:main:main";
           this.reconnectDelay = INITIAL_RECONNECT_DELAY;
           this.initialConnect = false;
           console.log("Gateway handshake complete, sessionKey:", this.sessionKey);

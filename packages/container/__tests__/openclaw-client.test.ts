@@ -123,7 +123,7 @@ describe("OpenClawClient", () => {
     const sentMsg = JSON.parse(sendFn.mock.calls[1][0] as string);
     expect(sentMsg.type).toBe("req");
     expect(sentMsg.method).toBe("chat.send");
-    expect(sentMsg.params.sessionKey).toBe("test-session-key");
+    expect(sentMsg.params.sessionKey).toBe("agent:main:main");
     expect(sentMsg.params.message).toBe("Hello");
     expect(sentMsg.params.idempotencyKey).toBe("test-uuid-1234");
     expect(typeof sentMsg.id).toBe("string");
