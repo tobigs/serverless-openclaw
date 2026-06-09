@@ -26,7 +26,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
 
 # Install OpenClaw CLI (version configurable via build arg)
 ARG OPENCLAW_VERSION=2026.6.1
-RUN npm install -g openclaw@${OPENCLAW_VERSION} @aws-sdk/client-s3 && \
+RUN npm install -g openclaw@${OPENCLAW_VERSION} @openclaw/amazon-bedrock-provider@${OPENCLAW_VERSION} @aws-sdk/client-s3 && \
     npm cache clean --force
 
 # Create non-root user

@@ -8,37 +8,10 @@ export interface ProviderConfig {
   defaultModel: string;
 }
 
-// OpenClaw 2026.6+ uses Bedrock cross-region inference profile IDs.
-// Format: "{cris}.anthropic.claude-{name}-{major}-{minor}" (no -v1 suffix).
-// The CRIS prefix (eu/us/apac) is still required for cross-region inference.
+// OpenClaw 2026.6+ with @openclaw/amazon-bedrock-provider handles CRIS routing internally.
+// Use unprefixed model IDs — no eu./us./apac. prefix, no -v1 suffix.
+// Format: "anthropic.claude-{name}-{major}-{minor}"
 export const BEDROCK_BASE_MODEL = "anthropic.claude-sonnet-4-6";
-
-const REGION_CRIS_PREFIX: Record<string, string> = {
-  "us-east-1": "us",
-  "us-east-2": "us",
-  "us-west-1": "us",
-  "us-west-2": "us",
-  "ca-central-1": "us",
-  "ca-west-1": "us",
-  "eu-central-1": "eu",
-  "eu-west-1": "eu",
-  "eu-west-2": "eu",
-  "eu-west-3": "eu",
-  "eu-north-1": "eu",
-  "eu-south-1": "eu",
-  "eu-south-2": "eu",
-  "ap-northeast-1": "apac",
-  "ap-northeast-2": "apac",
-  "ap-northeast-3": "apac",
-  "ap-south-1": "apac",
-  "ap-south-2": "apac",
-  "ap-southeast-1": "apac",
-  "ap-southeast-2": "apac",
-  "ap-southeast-3": "apac",
-  "ap-southeast-4": "apac",
-  "ap-southeast-5": "apac",
-  "ap-southeast-7": "apac",
-};
 
 export const PROVIDER_DEFAULTS = {
   anthropic: {
@@ -64,13 +37,10 @@ export function validateProvider(value: string): asserts value is AiProvider {
 
 /**
  * Resolves the Bedrock model ID.
- * OpenClaw 2026.6+ uses "{cris}.anthropic.claude-{name}-{major}-{minor}" format.
- * CRIS prefix is still required; -v1 suffix was dropped in 2026.6+.
+ * OpenClaw 2026.6+ with @openclaw/amazon-bedrock-provider handles CRIS internally.
  */
 export function resolveBedrockModel(region?: string, aiModel?: string): string {
-  if (aiModel) return aiModel;
-  const prefix = region ? REGION_CRIS_PREFIX[region] : undefined;
-  return prefix ? `${prefix}.${BEDROCK_BASE_MODEL}` : BEDROCK_BASE_MODEL;
+  return aiModel || BEDROCK_BASE_MODEL;
 }
 
 export function resolveModel(provider: "anthropic", aiModel?: string): string {
