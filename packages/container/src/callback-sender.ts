@@ -30,12 +30,26 @@ function stripMarkdown(text: string): string {
 
 export class CallbackSender {
   private client: ApiGatewayManagementApiClient;
-  private telegramBotToken?: string;
+  /** Maps connectionId prefix (e.g. "telegram", "telegram-coach") to bot token */
+  private telegramTokens: Map<string, string>;
   private telegramBuffers = new Map<string, string[]>();
 
-  constructor(endpoint: string, telegramBotToken?: string) {
+  constructor(endpoint: string, telegramBotToken?: string, extraTokens?: Record<string, string>) {
     this.client = new ApiGatewayManagementApiClient({ endpoint });
-    this.telegramBotToken = telegramBotToken;
+    this.telegramTokens = new Map();
+    if (telegramBotToken) this.telegramTokens.set("telegram", telegramBotToken);
+    for (const [prefix, token] of Object.entries(extraTokens ?? {})) {
+      this.telegramTokens.set(prefix, token);
+    }
+  }
+
+  private resolveToken(connectionId: string): string | undefined {
+    // Match longest prefix first: "telegram-coach" before "telegram"
+    const sorted = [...this.telegramTokens.keys()].sort((a, b) => b.length - a.length);
+    for (const prefix of sorted) {
+      if (connectionId.startsWith(prefix + ":")) return this.telegramTokens.get(prefix);
+    }
+    return undefined;
   }
 
   async send(connectionId: string, data: ServerMessage): Promise<void> {
@@ -60,7 +74,7 @@ export class CallbackSender {
   }
 
   private async handleTelegram(connectionId: string, data: ServerMessage): Promise<void> {
-    if (!this.telegramBotToken) return;
+    if (!this.resolveToken(connectionId)) return;
 
     if (data.type === "stream_chunk" && data.content) {
       const buffer = this.telegramBuffers.get(connectionId) ?? [];
@@ -88,18 +102,17 @@ export class CallbackSender {
 
   private async sendTelegramMessage(connectionId: string, text: string): Promise<void> {
     const chatId = connectionId.slice(connectionId.indexOf(":") + 1);
+    const token = this.resolveToken(connectionId);
+    if (!token) return;
     const plain = stripMarkdown(text);
     try {
       for (let i = 0; i < plain.length; i += TELEGRAM_MAX_LENGTH) {
         const chunk = plain.slice(i, i + TELEGRAM_MAX_LENGTH);
-        const resp = await fetch(
-          `https://api.telegram.org/bot${this.telegramBotToken}/sendMessage`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ chat_id: chatId, text: chunk }),
-          },
-        );
+        const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: chatId, text: chunk }),
+        });
         if (!resp.ok) {
           console.error(`[callback] Telegram API error ${resp.status} for ${connectionId}`);
         }

@@ -6,11 +6,7 @@ import { LifecycleManager } from "./lifecycle.js";
 import { consumePendingMessages } from "./pending-messages.js";
 import { restoreFromS3 } from "./s3-sync.js";
 import { discoverPublicIp } from "./discover-public-ip.js";
-import {
-  saveMessagePair,
-  loadRecentHistory,
-  formatHistoryContext,
-} from "./conversation-store.js";
+import { saveMessagePair, loadRecentHistory, formatHistoryContext } from "./conversation-store.js";
 import type { PendingMessageItem, Channel } from "@serverless-openclaw/shared";
 import { publishStartupMetrics, publishMessageMetrics } from "./metrics.js";
 import { waitForPort, notifyTelegram, getTelegramChatId } from "./utils.js";
@@ -72,17 +68,27 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   const tGateway = Date.now();
 
   const telegramBotToken = env.TELEGRAM_BOT_TOKEN;
-  const callbackSender = new CallbackSender(env.CALLBACK_URL, telegramBotToken);
+
+  // Build extra bot token map from TELEGRAM_BOT_TOKEN_{ID} env vars
+  const extraTelegramTokens: Record<string, string> = {};
+  for (const [key, val] of Object.entries(process.env)) {
+    const match = key.match(/^TELEGRAM_BOT_TOKEN_(.+)$/);
+    if (match && val) {
+      extraTelegramTokens[`telegram-${match[1].toLowerCase()}`] = val;
+    }
+  }
+
+  const callbackSender = new CallbackSender(
+    env.CALLBACK_URL,
+    telegramBotToken,
+    extraTelegramTokens,
+  );
   const openclawClient = new OpenClawClient(gatewayUrl, env.OPENCLAW_GATEWAY_TOKEN);
   await openclawClient.waitForReady();
   const tClient = Date.now();
 
   if (telegramChatId && env.TELEGRAM_BOT_TOKEN) {
-    void notifyTelegram(
-      env.TELEGRAM_BOT_TOKEN,
-      telegramChatId,
-      "✅ Ready! Processing messages...",
-    );
+    void notifyTelegram(env.TELEGRAM_BOT_TOKEN, telegramChatId, "✅ Ready! Processing messages...");
   }
 
   const lifecycle = new LifecycleManager({
@@ -139,9 +145,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     processMessage: async (msg: PendingMessageItem) => {
       const msgStart = new Date(msg.createdAt).getTime();
 
-      const messageToSend = historyPrefix
-        ? historyPrefix + msg.message
-        : msg.message;
+      const messageToSend = historyPrefix ? historyPrefix + msg.message : msg.message;
       historyPrefix = "";
 
       const generator = openclawClient.sendMessage(userId, messageToSend);
@@ -164,7 +168,9 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
       });
 
       if (fullResponse) {
-        await saveMessagePair(dynamoSend, userId, msg.message, fullResponse, msg.channel).catch(() => {});
+        await saveMessagePair(dynamoSend, userId, msg.message, fullResponse, msg.channel).catch(
+          () => {},
+        );
       }
     },
   });
@@ -174,7 +180,9 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   }
 
   const tRunning = Date.now();
-  console.log(`Startup complete in ${tRunning - t0}ms (S3+History: ${tS3 - t0}ms, Gateway: ${tGateway - tS3}ms, Client: ${tClient - tGateway}ms)`);
+  console.log(
+    `Startup complete in ${tRunning - t0}ms (S3+History: ${tS3 - t0}ms, Gateway: ${tGateway - tS3}ms, Client: ${tClient - tGateway}ms)`,
+  );
 
   void publishStartupMetrics({
     total: tRunning - t0,
@@ -197,5 +205,4 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
       process.exit(0);
     });
   });
-
 }
