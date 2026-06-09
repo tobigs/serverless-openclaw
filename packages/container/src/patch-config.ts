@@ -96,6 +96,25 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.model = {
       primary: `${providerConfig.openclawProvider}/${providerConfig.defaultModel}`,
     };
+
+    // For Bedrock: explicitly register the model in models.providers so OpenClaw doesn't
+    // need to discover it via the Bedrock API at inference time. Without this, the plugin
+    // loads lazily during before_agent_reply but hasn't finished async discovery when the
+    // lane task runs, causing "Unknown model" even though the model is in agents.defaults.
+    if (options.aiProvider === "bedrock") {
+      const region = options.awsRegion ?? "us-east-1";
+      const modelId = providerConfig.defaultModel;
+      const models = (config.models ?? {}) as Record<string, unknown>;
+      const providers = (models.providers ?? {}) as Record<string, unknown>;
+      providers["amazon-bedrock"] = {
+        baseUrl: `https://bedrock-runtime.${region}.amazonaws.com`,
+        api: "bedrock-converse-stream",
+        auth: "aws-sdk",
+        models: [{ id: modelId, contextWindow: 1000000, maxTokens: 8192 }],
+      };
+      models.providers = providers;
+      config.models = models;
+    }
   }
 
   if (options?.workspacePath) {
@@ -105,10 +124,6 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   // Set thinking level from env (e.g. THINKING_LEVEL=low). Valid: off|minimal|low|medium|high|xhigh|adaptive|max
   if (process.env.THINKING_LEVEL) {
     defaults.thinkingDefault = process.env.THINKING_LEVEL;
-  }
-
-  if (options?.aiProvider === "bedrock") {
-    process.env.AWS_PROFILE = "default";
   }
 
   agents.defaults = defaults;

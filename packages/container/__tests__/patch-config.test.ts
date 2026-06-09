@@ -224,7 +224,9 @@ describe("patchConfig", () => {
     });
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.models).toBeUndefined();
     expect(written.agents.defaults.model.primary).toMatch(/^amazon-bedrock[/]/);
+    // Provider model must be explicitly registered so OpenClaw doesn't need async discovery
+    expect(written.models.providers["amazon-bedrock"].baseUrl).toContain("us-east-1");
+    expect(written.models.providers["amazon-bedrock"].models[0].id).toMatch(/^us\.anthropic/);
   });
 });
