@@ -74,18 +74,23 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   plugins.entries = entries;
   config.plugins = plugins;
 
-  // Strip models.bedrockDiscovery — valid in 2026.2.x but removed from the
-  // 2026.6 schema. Persisted configs restored from S3 may still contain it,
-  // causing a startup crash ("models: Invalid input").
+  // Strip keys that are invalid in 2026.6 schema or should never be persisted.
   const models = config.models as Record<string, unknown> | undefined;
   if (models) {
-    delete models.bedrockDiscovery;
+    delete models.bedrockDiscovery; // removed from 2026.6 schema
+    delete models.providers; // written fresh at every boot — stale copy causes wrong models
     if (Object.keys(models).length === 0) delete config.models;
   }
 
   // Set model and workspace
   const agents = (config.agents ?? {}) as Record<string, unknown>;
   const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
+
+  // Strip named agent keys written by older OpenClaw versions (e.g. agents.coach).
+  // In 2026.6, named agents live in agents.list — top-level keys cause "agents: Invalid input".
+  for (const key of Object.keys(agents)) {
+    if (key !== "defaults" && key !== "list") delete agents[key];
+  }
 
   // Determine the active model ID — persisted config wins over env seed.
   // This allows /model and /think commands to survive cold starts.
@@ -164,11 +169,49 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  // Always apply thinking level from env — /think is a session-only chat command
-  // that does not write to openclaw.json, so the env var is the only durable knob.
+  // Always apply thinking level from env — /think is session-only and doesn't persist.
   // Valid: off|minimal|low|medium|high|xhigh|adaptive|max
+  // adaptive = OpenClaw auto-selects depth per message; falls back to medium for non-adaptive models.
   if (process.env.THINKING_LEVEL) {
     defaults.thinkingDefault = process.env.THINKING_LEVEL;
+  }
+
+  // Seed agents.list from EXTRA_TELEGRAM_BOTS — each extra bot gets a named agent entry
+  // with its own model and thinkingDefault if specified in agentProfile.
+  // agents.list is the correct 2026.6 schema location; top-level agents.{id} keys are invalid.
+  try {
+    const extraBots = JSON.parse(process.env.EXTRA_TELEGRAM_BOTS ?? "[]") as Array<{
+      id: string;
+      agentProfile?: { model?: string; thinking?: string; systemPrompt?: string };
+    }>;
+    if (extraBots.length > 0) {
+      const existingList = Array.isArray(agents.list) ? (agents.list as unknown[]) : [];
+      const newList: unknown[] = [];
+      for (const bot of extraBots) {
+        const existing = existingList.find(
+          (e) =>
+            typeof e === "object" && e !== null && (e as Record<string, unknown>).id === bot.id,
+        );
+        if (existing) {
+          newList.push(existing); // keep persisted entry (e.g. /model changes)
+        } else {
+          // Seed from agentProfile — only on first boot
+          const entry: Record<string, unknown> = { id: bot.id };
+          if (bot.agentProfile?.model) {
+            entry.model = { primary: `amazon-bedrock/${bot.agentProfile.model}` };
+          }
+          entry.thinkingDefault =
+            bot.agentProfile?.thinking ?? process.env.THINKING_LEVEL ?? "adaptive";
+          if (bot.agentProfile?.systemPrompt) {
+            entry.systemPromptArg = bot.agentProfile.systemPrompt;
+          }
+          newList.push(entry);
+        }
+      }
+      agents.list = newList;
+    }
+  } catch {
+    /* non-fatal */
   }
 
   agents.defaults = defaults;
