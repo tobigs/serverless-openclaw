@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { GATEWAY_PORT, resolveProviderConfig } from "@serverless-openclaw/shared";
-import type { AiProvider, ExtraTelegramBot } from "@serverless-openclaw/shared";
+import type { AiProvider } from "@serverless-openclaw/shared";
 
 interface PatchOptions {
   llmModel?: string;
@@ -69,31 +69,20 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  defaults.thinking = process.env.THINKING_LEVEL ?? "low";
+  // NOTE: agents.defaults.thinking is not a valid key in OpenClaw 2026.2.13 — omit it.
+  // Use /think command in Telegram to set thinking level per session instead.
 
   agents.defaults = defaults;
   config.agents = agents;
 
-  // Register extra Telegram bots as additional OpenClaw plugin entries.
-  // Each bot gets its own plugin key so OpenClaw routes messages to the right session.
-  const extraBots: ExtraTelegramBot[] = (() => {
-    try {
-      return JSON.parse(process.env.EXTRA_TELEGRAM_BOTS ?? "[]") as ExtraTelegramBot[];
-    } catch {
-      return [];
-    }
-  })();
-
+  // NOTE: Extra bot plugin entries (token, agentProfile) are not valid keys in
+  // OpenClaw 2026.2.13. Bots are registered in the Lambda layer only; the container
+  // uses connectionId routing to send replies back to the correct bot token.
+  // Clean up any stale entries written by a previous version of patch-config.
   const plugins = (config.plugins ?? {}) as Record<string, unknown>;
   const entries = (plugins.entries ?? {}) as Record<string, unknown>;
-  for (const bot of extraBots) {
-    const botToken = process.env[`TELEGRAM_BOT_TOKEN_${bot.id.toUpperCase()}`];
-    if (!botToken) continue;
-    entries[`telegram-${bot.id}`] = {
-      enabled: true,
-      token: botToken,
-      ...(bot.agentProfile ? { agentProfile: bot.agentProfile } : {}),
-    };
+  for (const key of Object.keys(entries)) {
+    if (key.startsWith("telegram-")) delete entries[key];
   }
   plugins.entries = entries;
   config.plugins = plugins;

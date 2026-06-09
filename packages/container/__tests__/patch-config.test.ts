@@ -155,12 +155,7 @@ describe("patchConfig", () => {
     patchConfig("/path/to/openclaw.json");
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.agents).toEqual({
-      defaults: {
-        ...configWithAgents.agents.defaults,
-        thinking: "low",
-      },
-    });
+    expect(written.agents).toEqual(configWithAgents.agents);
   });
 
   it("should preserve gateway.host while overriding gateway.port", () => {
