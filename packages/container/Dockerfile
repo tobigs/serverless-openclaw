@@ -33,7 +33,15 @@ RUN npm install -g openclaw@${OPENCLAW_VERSION} @openclaw/amazon-bedrock-provide
 RUN groupadd -r openclaw && useradd -r -g openclaw -m openclaw
 
 # Pre-generate openclaw config (skip onboard at runtime)
-RUN mkdir -p /home/openclaw/.openclaw && \
+# Register amazon-bedrock-provider plugin via OpenClaw's managed npm recovery mechanism:
+# loadInstalledPluginIndexInstallRecordsSync scans ~/.openclaw/npm/package.json dependencies
+# and resolves each entry from node_modules. We symlink to the globally installed package
+# so no network call is needed at runtime.
+RUN mkdir -p /home/openclaw/.openclaw/npm/node_modules/@openclaw && \
+    ln -s /usr/local/lib/node_modules/@openclaw/amazon-bedrock-provider \
+          /home/openclaw/.openclaw/npm/node_modules/@openclaw/amazon-bedrock-provider && \
+    echo '{"name":"openclaw-plugins","version":"1.0.0","dependencies":{"@openclaw/amazon-bedrock-provider":"'${OPENCLAW_VERSION}'"}}' \
+         > /home/openclaw/.openclaw/npm/package.json && \
     echo '{"gateway":{"port":18789,"mode":"local"}}' > /home/openclaw/.openclaw/openclaw.json && \
     chown -R openclaw:openclaw /home/openclaw/.openclaw
 
