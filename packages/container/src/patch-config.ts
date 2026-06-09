@@ -74,6 +74,15 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   plugins.entries = entries;
   config.plugins = plugins;
 
+  // Strip models.bedrockDiscovery — valid in 2026.2.x but removed from the
+  // 2026.6 schema. Persisted configs restored from S3 may still contain it,
+  // causing a startup crash ("models: Invalid input").
+  const models = config.models as Record<string, unknown> | undefined;
+  if (models) {
+    delete models.bedrockDiscovery;
+    if (Object.keys(models).length === 0) delete config.models;
+  }
+
   // Set model and workspace
   const agents = (config.agents ?? {}) as Record<string, unknown>;
   const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
