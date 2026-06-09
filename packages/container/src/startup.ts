@@ -20,7 +20,7 @@ export interface StartContainerOptions {
     USER_ID: string;
     DATA_BUCKET: string;
     CALLBACK_URL: string;
-    TELEGRAM_BOT_TOKEN?: string;
+    BRIDGE_TELEGRAM_TOKEN?: string;
     TELEGRAM_CHAT_ID?: string;
   };
   taskMetadata: { taskArn: string; cluster: string };
@@ -55,9 +55,9 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   }
 
   // Telegram startup notification (best-effort, non-blocking)
-  if (telegramChatId && env.TELEGRAM_BOT_TOKEN) {
+  if (telegramChatId && env.BRIDGE_TELEGRAM_TOKEN) {
     void notifyTelegram(
-      env.TELEGRAM_BOT_TOKEN,
+      env.BRIDGE_TELEGRAM_TOKEN,
       telegramChatId,
       "⚡ Container started. Connecting to AI engine...",
     );
@@ -67,12 +67,12 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   await waitForPort(18789, 120000);
   const tGateway = Date.now();
 
-  const telegramBotToken = env.TELEGRAM_BOT_TOKEN;
+  const telegramBotToken = env.BRIDGE_TELEGRAM_TOKEN;
 
-  // Build extra bot token map from TELEGRAM_BOT_TOKEN_{ID} env vars
+  // Build extra bot token map from BRIDGE_TELEGRAM_TOKEN_{ID} env vars
   const extraTelegramTokens: Record<string, string> = {};
   for (const [key, val] of Object.entries(process.env)) {
-    const match = key.match(/^TELEGRAM_BOT_TOKEN_(.+)$/);
+    const match = key.match(/^BRIDGE_TELEGRAM_TOKEN_(.+)$/);
     if (match && val) {
       extraTelegramTokens[`telegram-${match[1].toLowerCase()}`] = val;
     }
@@ -87,8 +87,12 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
   await openclawClient.waitForReady();
   const tClient = Date.now();
 
-  if (telegramChatId && env.TELEGRAM_BOT_TOKEN) {
-    void notifyTelegram(env.TELEGRAM_BOT_TOKEN, telegramChatId, "✅ Ready! Processing messages...");
+  if (telegramChatId && env.BRIDGE_TELEGRAM_TOKEN) {
+    void notifyTelegram(
+      env.BRIDGE_TELEGRAM_TOKEN,
+      telegramChatId,
+      "✅ Ready! Processing messages...",
+    );
   }
 
   const lifecycle = new LifecycleManager({
@@ -98,6 +102,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     s3Bucket: env.DATA_BUCKET,
     s3Prefix: `workspaces/${userId}`,
     workspacePath: "/data/workspace",
+    openclawHome: "/home/openclaw/.openclaw",
   });
 
   // Build session key map: connectionId prefix → OpenClaw session key

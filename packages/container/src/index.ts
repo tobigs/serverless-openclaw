@@ -43,9 +43,10 @@ async function getTaskMetadata(): Promise<TaskMetadata> {
 
 async function main(): Promise<void> {
   // Validate required env vars
-  const env = Object.fromEntries(
-    REQUIRED_ENV.map((name) => [name, requireEnv(name)]),
-  ) as Record<(typeof REQUIRED_ENV)[number], string>;
+  const env = Object.fromEntries(REQUIRED_ENV.map((name) => [name, requireEnv(name)])) as Record<
+    (typeof REQUIRED_ENV)[number],
+    string
+  >;
 
   const taskMetadata = await getTaskMetadata();
 
@@ -63,7 +64,7 @@ async function main(): Promise<void> {
   await startContainer({
     env: {
       ...env,
-      TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+      BRIDGE_TELEGRAM_TOKEN: process.env.BRIDGE_TELEGRAM_TOKEN,
       TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
     },
     taskMetadata,
