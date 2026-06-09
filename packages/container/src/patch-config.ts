@@ -130,9 +130,10 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  // Seed thinking level from env only when not already persisted.
+  // Always apply thinking level from env — /think is a session-only chat command
+  // that does not write to openclaw.json, so the env var is the only durable knob.
   // Valid: off|minimal|low|medium|high|xhigh|adaptive|max
-  if (!defaults.thinkingDefault && process.env.THINKING_LEVEL) {
+  if (process.env.THINKING_LEVEL) {
     defaults.thinkingDefault = process.env.THINKING_LEVEL;
   }
 

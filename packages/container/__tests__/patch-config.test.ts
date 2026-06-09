@@ -236,7 +236,6 @@ describe("patchConfig", () => {
       agents: {
         defaults: {
           model: { primary: "amazon-bedrock/eu.anthropic.claude-opus-4-8" },
-          thinkingDefault: "high",
         },
       },
     };
@@ -257,11 +256,9 @@ describe("patchConfig", () => {
     expect(written.models.providers["amazon-bedrock"].models[0].id).toBe(
       "eu.anthropic.claude-opus-4-8",
     );
-    // Persisted thinking level survives
-    expect(written.agents.defaults.thinkingDefault).toBe("high");
   });
 
-  it("should not overwrite persisted thinking level with env seed", () => {
+  it("should always apply THINKING_LEVEL env var (session /think command does not persist)", () => {
     const configWithThinking = {
       ...BASE_CONFIG,
       agents: { defaults: { thinkingDefault: "xhigh" } },
@@ -273,7 +270,7 @@ describe("patchConfig", () => {
     patchConfig("/path/to/openclaw.json");
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.agents.defaults.thinkingDefault).toBe("xhigh");
+    expect(written.agents.defaults.thinkingDefault).toBe("low");
     delete process.env.THINKING_LEVEL;
   });
 });
