@@ -228,7 +228,7 @@ export class OpenClawClient {
   }
 
   async *sendMessage(
-    _userId: string,
+    userId: string,
     message: string,
     sessionKeyOverride?: string,
   ): AsyncGenerator<string> {
@@ -248,6 +248,10 @@ export class OpenClawClient {
       params: {
         sessionKey: sessionKeyOverride ?? this.sessionKey,
         message,
+        // Pass sender so OpenClaw can authorize directives (/think, /model, etc.)
+        // against commands.ownerAllowFrom. Without this, all slash commands are
+        // treated as unauthorized and passed through to the model as plain text.
+        sender: userId,
         idempotencyKey: randomUUID(),
       },
     };
