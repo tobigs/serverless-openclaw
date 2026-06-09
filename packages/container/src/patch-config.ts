@@ -87,42 +87,52 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   const agents = (config.agents ?? {}) as Record<string, unknown>;
   const defaults = (agents.defaults ?? {}) as Record<string, unknown>;
 
-  if (options?.aiProvider || options?.llmModel) {
+  // Determine the active model ID — persisted config wins over env seed.
+  // This allows /model and /think commands to survive cold starts.
+  const persistedPrimary = (defaults.model as Record<string, unknown> | undefined)?.primary as
+    | string
+    | undefined;
+  let activeModelId: string | undefined;
+
+  if (persistedPrimary) {
+    // Keep OpenClaw's own choice (e.g. set via /model command)
+    activeModelId = persistedPrimary.split("/").slice(1).join("/");
+  } else if (options?.aiProvider || options?.llmModel) {
+    // First boot or no persisted model — seed from env
     const providerConfig = resolveProviderConfig({
       AI_PROVIDER: options.aiProvider,
       AI_MODEL: options.llmModel,
       AWS_REGION: options.awsRegion,
     });
+    activeModelId = providerConfig.defaultModel;
     defaults.model = {
-      primary: `${providerConfig.openclawProvider}/${providerConfig.defaultModel}`,
+      primary: `${providerConfig.openclawProvider}/${activeModelId}`,
     };
+  }
 
-    // For Bedrock: explicitly register the model in models.providers so OpenClaw doesn't
-    // need to discover it via the Bedrock API at inference time. Without this, the plugin
-    // loads lazily during before_agent_reply but hasn't finished async discovery when the
-    // lane task runs, causing "Unknown model" even though the model is in agents.defaults.
-    if (options.aiProvider === "bedrock") {
-      const region = options.awsRegion ?? "us-east-1";
-      const modelId = providerConfig.defaultModel;
-      const models = (config.models ?? {}) as Record<string, unknown>;
-      const providers = (models.providers ?? {}) as Record<string, unknown>;
-      providers["amazon-bedrock"] = {
-        baseUrl: `https://bedrock-runtime.${region}.amazonaws.com`,
-        api: "bedrock-converse-stream",
-        auth: "aws-sdk",
-        models: [{ id: modelId, name: modelId, contextWindow: 1000000, maxTokens: 8192 }],
-      };
-      models.providers = providers;
-      config.models = models;
-    }
+  // Always register the Bedrock provider entry explicitly so OpenClaw doesn't need to
+  // run async discovery at inference time. Uses the active model ID (persisted or seeded).
+  if (options?.aiProvider === "bedrock" && activeModelId) {
+    const region = options.awsRegion ?? "us-east-1";
+    const modelsSection = (config.models ?? {}) as Record<string, unknown>;
+    const providers = (modelsSection.providers ?? {}) as Record<string, unknown>;
+    providers["amazon-bedrock"] = {
+      baseUrl: `https://bedrock-runtime.${region}.amazonaws.com`,
+      api: "bedrock-converse-stream",
+      auth: "aws-sdk",
+      models: [{ id: activeModelId, name: activeModelId, contextWindow: 1000000, maxTokens: 8192 }],
+    };
+    modelsSection.providers = providers;
+    config.models = modelsSection;
   }
 
   if (options?.workspacePath) {
     defaults.workspace = options.workspacePath;
   }
 
-  // Set thinking level from env (e.g. THINKING_LEVEL=low). Valid: off|minimal|low|medium|high|xhigh|adaptive|max
-  if (process.env.THINKING_LEVEL) {
+  // Seed thinking level from env only when not already persisted.
+  // Valid: off|minimal|low|medium|high|xhigh|adaptive|max
+  if (!defaults.thinkingDefault && process.env.THINKING_LEVEL) {
     defaults.thinkingDefault = process.env.THINKING_LEVEL;
   }
 

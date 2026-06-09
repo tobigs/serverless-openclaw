@@ -214,7 +214,7 @@ describe("patchConfig", () => {
     expect(written.agents.defaults.workspace).toBe("/data/workspace");
   });
 
-  it("should set bedrock model when aiProvider is bedrock", () => {
+  it("should seed bedrock model from env on first boot (no persisted model)", () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
     mockedFs.writeFileSync.mockImplementation(() => {});
 
@@ -228,5 +228,52 @@ describe("patchConfig", () => {
     // Provider model must be explicitly registered so OpenClaw doesn't need async discovery
     expect(written.models.providers["amazon-bedrock"].baseUrl).toContain("us-east-1");
     expect(written.models.providers["amazon-bedrock"].models[0].id).toMatch(/^us\.anthropic/);
+  });
+
+  it("should keep persisted model when already set (e.g. changed via /model)", () => {
+    const configWithPersistedModel = {
+      ...BASE_CONFIG,
+      agents: {
+        defaults: {
+          model: { primary: "amazon-bedrock/eu.anthropic.claude-opus-4-8" },
+          thinkingDefault: "high",
+        },
+      },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithPersistedModel));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      awsRegion: "eu-central-1",
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    // Persisted model survives — env seed does not overwrite
+    expect(written.agents.defaults.model.primary).toBe(
+      "amazon-bedrock/eu.anthropic.claude-opus-4-8",
+    );
+    // Provider entry uses the persisted model ID
+    expect(written.models.providers["amazon-bedrock"].models[0].id).toBe(
+      "eu.anthropic.claude-opus-4-8",
+    );
+    // Persisted thinking level survives
+    expect(written.agents.defaults.thinkingDefault).toBe("high");
+  });
+
+  it("should not overwrite persisted thinking level with env seed", () => {
+    const configWithThinking = {
+      ...BASE_CONFIG,
+      agents: { defaults: { thinkingDefault: "xhigh" } },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithThinking));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+    process.env.THINKING_LEVEL = "low";
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents.defaults.thinkingDefault).toBe("xhigh");
+    delete process.env.THINKING_LEVEL;
   });
 });
