@@ -52,8 +52,13 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   // Gateway port must always be 18789
   config.gateway = { ...config.gateway, port: GATEWAY_PORT };
 
-  // Allow the agent to self-restart
-  config.commands = { ...config.commands, restart: true };
+  // Allow the agent to self-restart, and authorize the container owner
+  const ownerId = process.env.USER_ID;
+  config.commands = {
+    ...config.commands,
+    restart: true,
+    ...(ownerId ? { ownerAllowFrom: [ownerId] } : {}),
+  };
 
   // Remove secrets — API keys delivered via env vars only
   if (config.auth) delete config.auth.token;
