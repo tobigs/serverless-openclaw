@@ -110,7 +110,7 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
         baseUrl: `https://bedrock-runtime.${region}.amazonaws.com`,
         api: "bedrock-converse-stream",
         auth: "aws-sdk",
-        models: [{ id: modelId, contextWindow: 1000000, maxTokens: 8192 }],
+        models: [{ id: modelId, name: modelId, contextWindow: 1000000, maxTokens: 8192 }],
       };
       models.providers = providers;
       config.models = models;
