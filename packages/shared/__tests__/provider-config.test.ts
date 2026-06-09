@@ -6,33 +6,39 @@ import {
 } from "../src/provider-config.js";
 
 describe("resolveBedrockModel", () => {
-  it("returns base model when no args provided", () => {
-    expect(resolveBedrockModel()).toBe(BEDROCK_BASE_MODEL);
+  it("returns eu-prefixed model for eu-central-1", () => {
+    expect(resolveBedrockModel("eu-central-1")).toBe("eu.anthropic.claude-sonnet-4-6");
   });
 
-  it("returns base model regardless of region (provider handles CRIS internally)", () => {
-    expect(resolveBedrockModel("eu-central-1")).toBe(BEDROCK_BASE_MODEL);
-    expect(resolveBedrockModel("us-east-1")).toBe(BEDROCK_BASE_MODEL);
-    expect(resolveBedrockModel("ap-northeast-1")).toBe(BEDROCK_BASE_MODEL);
+  it("returns us-prefixed model for us-east-1", () => {
+    expect(resolveBedrockModel("us-east-1")).toBe("us.anthropic.claude-sonnet-4-6");
+  });
+
+  it("returns ap-prefixed model for ap-northeast-1", () => {
+    expect(resolveBedrockModel("ap-northeast-1")).toBe("ap.anthropic.claude-sonnet-4-6");
+  });
+
+  it("falls back to BEDROCK_BASE_MODEL for unknown region", () => {
     expect(resolveBedrockModel("sa-east-1")).toBe(BEDROCK_BASE_MODEL);
+    expect(resolveBedrockModel()).toBe(BEDROCK_BASE_MODEL);
   });
 
   it("returns AI_MODEL override as-is", () => {
     expect(resolveBedrockModel("eu-central-1", "my-custom-model")).toBe("my-custom-model");
   });
 
-  it("ignores empty string AI_MODEL and returns base model", () => {
-    expect(resolveBedrockModel("eu-central-1", "")).toBe(BEDROCK_BASE_MODEL);
+  it("ignores empty string AI_MODEL and returns region-prefixed model", () => {
+    expect(resolveBedrockModel("eu-central-1", "")).toBe("eu.anthropic.claude-sonnet-4-6");
   });
 });
 
 describe("resolveProviderConfig", () => {
-  it("resolves bedrock with simplified model ID", () => {
+  it("resolves bedrock with CRIS-prefixed model ID for eu-central-1", () => {
     const config = resolveProviderConfig({
       AI_PROVIDER: "bedrock",
       AWS_REGION: "eu-central-1",
     });
-    expect(config.defaultModel).toBe("anthropic.claude-sonnet-4-6");
+    expect(config.defaultModel).toBe("eu.anthropic.claude-sonnet-4-6");
     expect(config.openclawProvider).toBe("amazon-bedrock");
     expect(config.openclawApi).toBe("bedrock-converse-stream");
   });
