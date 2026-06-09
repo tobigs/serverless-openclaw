@@ -214,7 +214,7 @@ describe("patchConfig", () => {
     expect(written.agents.defaults.workspace).toBe("/data/workspace");
   });
 
-  it("should disable bedrockDiscovery even when aiProvider is bedrock", () => {
+  it("should set bedrock model when aiProvider is bedrock", () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
     mockedFs.writeFileSync.mockImplementation(() => {});
 
@@ -224,7 +224,7 @@ describe("patchConfig", () => {
     });
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.models.bedrockDiscovery.enabled).toBe(false);
+    expect(written.models).toBeUndefined();
     expect(written.agents.defaults.model.primary).toMatch(/^amazon-bedrock[/]/);
   });
 });

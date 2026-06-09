@@ -25,7 +25,7 @@ RUN apt-get update && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
 
 # Install OpenClaw CLI (version configurable via build arg)
-ARG OPENCLAW_VERSION=2026.2.13
+ARG OPENCLAW_VERSION=2026.6.1
 RUN npm install -g openclaw@${OPENCLAW_VERSION} @aws-sdk/client-s3 && \
     npm cache clean --force
 
