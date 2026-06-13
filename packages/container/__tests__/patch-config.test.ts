@@ -155,7 +155,13 @@ describe("patchConfig", () => {
     patchConfig("/path/to/openclaw.json");
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.agents).toEqual(configWithAgents.agents);
+    expect(written.agents).toEqual({
+      defaults: {
+        workspace: "/data/workspace",
+        model: "anthropic/claude-sonnet-4-20250514",
+        thinkingDefault: "adaptive",
+      },
+    });
   });
 
   it("should preserve gateway.host while overriding gateway.port", () => {

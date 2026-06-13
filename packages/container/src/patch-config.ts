@@ -172,8 +172,23 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   // Always apply thinking level from env — /think is session-only and doesn't persist.
   // Valid: off|minimal|low|medium|high|xhigh|adaptive|max
   // adaptive = OpenClaw auto-selects depth per message; falls back to medium for non-adaptive models.
-  if (process.env.THINKING_LEVEL) {
-    defaults.thinkingDefault = process.env.THINKING_LEVEL;
+  const thinkingLevel = process.env.THINKING_LEVEL ?? "adaptive";
+  defaults.thinkingDefault = thinkingLevel;
+
+  // Set per-model thinking params so each model in the catalog gets explicit thinking config.
+  if (activeModelId && options?.aiProvider === "bedrock") {
+    const region = options.awsRegion ?? "us-east-1";
+    const crisPrefix = region.startsWith("eu") ? "eu" : region.startsWith("ap") ? "apac" : "us";
+    const perModelConfig = (defaults.models ?? {}) as Record<string, unknown>;
+    for (const modelId of [
+      activeModelId,
+      `${crisPrefix}.anthropic.claude-sonnet-4-6`,
+      `${crisPrefix}.anthropic.claude-opus-4-8`,
+    ]) {
+      const key = `amazon-bedrock/${modelId}`;
+      perModelConfig[key] = { params: { thinking: { mode: thinkingLevel } } };
+    }
+    defaults.models = perModelConfig;
   }
 
   // Seed agents.list from EXTRA_TELEGRAM_BOTS — each extra bot gets a named agent entry
