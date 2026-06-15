@@ -13,11 +13,3 @@ export const SSM_SECRETS = {
   TELEGRAM_BOT_TOKEN: "/serverless-openclaw/secrets/telegram-bot-token",
   TELEGRAM_WEBHOOK_SECRET: "/serverless-openclaw/secrets/telegram-webhook-secret",
 } as const;
-
-/** Returns SSM paths for an extra Telegram bot by its id (e.g. "coach") */
-export function extraBotSsmPaths(botId: string) {
-  return {
-    botToken: `/serverless-openclaw/secrets/telegram-${botId}-bot-token`,
-    webhookSecret: `/serverless-openclaw/secrets/telegram-${botId}-webhook-secret`,
-  };
-}

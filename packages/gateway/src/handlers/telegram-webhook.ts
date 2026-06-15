@@ -16,68 +16,6 @@ import { sendTelegramMessage } from "../services/telegram.js";
 import { resolveUserId, verifyOtpAndLink } from "../services/identity.js";
 import { resolveSecrets } from "../services/secrets.js";
 import { invokeLambdaAgent } from "../services/lambda-agent.js";
-import type { ExtraTelegramBot } from "@serverless-openclaw/shared";
-
-/** Parse EXTRA_TELEGRAM_BOTS env var — returns [] if unset or invalid */
-function parseExtraBots(): ExtraTelegramBot[] {
-  const raw = process.env.EXTRA_TELEGRAM_BOTS;
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as ExtraTelegramBot[];
-  } catch {
-    console.warn("[telegram] failed to parse EXTRA_TELEGRAM_BOTS, ignoring");
-    return [];
-  }
-}
-
-interface BotContext {
-  botId: string;
-  /** userId namespace prefix, e.g. "telegram" or "telegram-coach" */
-  userIdPrefix: string;
-  ssmBotTokenPath: string;
-  ssmWebhookSecretPath: string;
-}
-
-/** Identify which bot this request is for by matching the secret token header */
-async function resolveBotContext(
-  secretTokenHeader: string | undefined,
-  resolveSecretsImpl: (paths: string[]) => Promise<Map<string, string>>,
-): Promise<BotContext | null> {
-  const extraBots = parseExtraBots();
-
-  // Build list of all bots: primary first, then extras
-  const candidates: BotContext[] = [
-    {
-      botId: "default",
-      userIdPrefix: "telegram",
-      ssmBotTokenPath: process.env.SSM_TELEGRAM_BOT_TOKEN!,
-      ssmWebhookSecretPath: process.env.SSM_TELEGRAM_SECRET_TOKEN!,
-    },
-    ...extraBots.map((b) => ({
-      botId: b.id,
-      userIdPrefix: `telegram-${b.id}`,
-      ssmBotTokenPath: b.ssmBotToken,
-      ssmWebhookSecretPath: b.ssmWebhookSecret,
-    })),
-  ];
-
-  // Resolve all webhook secrets in one batch
-  const secretPaths = candidates.map((c) => c.ssmWebhookSecretPath);
-  const secrets = await resolveSecretsImpl(secretPaths);
-
-  for (const candidate of candidates) {
-    const expected = secrets.get(candidate.ssmWebhookSecretPath) ?? "";
-    if (
-      secretTokenHeader &&
-      expected &&
-      secretTokenHeader.length === expected.length &&
-      timingSafeEqual(Buffer.from(secretTokenHeader), Buffer.from(expected))
-    ) {
-      return candidate;
-    }
-  }
-  return null;
-}
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const ecs = new ECSClient({});
@@ -100,27 +38,25 @@ export async function handler(event: {
 }): Promise<APIGatewayProxyResultV2> {
   const secretToken = event.headers["x-telegram-bot-api-secret-token"];
 
-  // Identify which bot this request is for — resolves secrets for all bots in one batch
-  const extraBots = parseExtraBots();
+  // Resolve all needed secrets in one batch
   const allSsmPaths = [
     process.env.SSM_BRIDGE_AUTH_TOKEN!,
     process.env.SSM_TELEGRAM_BOT_TOKEN!,
     process.env.SSM_TELEGRAM_SECRET_TOKEN!,
-    ...extraBots.flatMap((b) => [b.ssmBotToken, b.ssmWebhookSecret]),
   ];
   const secrets = await resolveSecrets(allSsmPaths);
 
-  const botCtx = await resolveBotContext(secretToken, (paths) =>
-    // Re-use already-resolved secrets map
-    Promise.resolve(new Map(paths.map((p) => [p, secrets.get(p) ?? ""]))),
-  );
-
-  if (!botCtx) {
+  // Verify webhook secret token
+  const expected = secrets.get(process.env.SSM_TELEGRAM_SECRET_TOKEN!) ?? "";
+  if (
+    !secretToken ||
+    !expected ||
+    secretToken.length !== expected.length ||
+    !timingSafeEqual(Buffer.from(secretToken), Buffer.from(expected))
+  ) {
     console.warn("[telegram] auth failed: secret token mismatch");
     return { statusCode: 403, body: JSON.stringify({ error: "Forbidden" }) };
   }
-
-  const { userIdPrefix, ssmBotTokenPath } = botCtx;
 
   if (!event.body) {
     console.log("[telegram] received empty body, ignoring");
@@ -142,11 +78,9 @@ export async function handler(event: {
 
   const chatId = update.message.chat.id;
   const telegramId = String(update.message.from?.id ?? chatId);
-  const rawUserId = `${userIdPrefix}:${telegramId}`;
-  const connectionId = `${userIdPrefix}:${chatId}`;
-  // Extra bots share the primary bot's Fargate task — task is owned by telegram:{id}
-  const taskOwnerId = botCtx.botId === "default" ? rawUserId : `telegram:${telegramId}`;
-  const botToken = secrets.get(ssmBotTokenPath) ?? "";
+  const rawUserId = `telegram:${telegramId}`;
+  const connectionId = `telegram:${chatId}`;
+  const botToken = secrets.get(process.env.SSM_TELEGRAM_BOT_TOKEN!) ?? "";
   const text = update.message.text;
 
   console.log("[telegram] received message", { chatId, telegramId, textLength: text.length });
@@ -197,19 +131,16 @@ export async function handler(event: {
 
   // Resolve telegram userId to linked cognito userId if available
   const userId = await resolveUserId(dynamoSend, rawUserId);
-  // Task owner resolution: extra bots share the primary bot's task
-  const resolvedTaskOwnerId = await resolveUserId(dynamoSend, taskOwnerId);
   console.log("[telegram] resolved userId", {
     rawUserId,
     userId,
-    taskOwnerId: resolvedTaskOwnerId,
     linked: userId !== rawUserId,
   });
 
   // Cold start reply — only relevant for Fargate (Lambda has no persistent task state)
   const agentRuntime = (process.env.AGENT_RUNTIME as "lambda" | "fargate" | "both") ?? "fargate";
   if (agentRuntime !== "lambda") {
-    const taskState = await getTaskState(dynamoSend, resolvedTaskOwnerId);
+    const taskState = await getTaskState(dynamoSend, userId);
     const needsColdStart = !taskState || taskState.status === "Starting";
     console.log("[telegram] fargate task state", {
       userId,
@@ -227,25 +158,24 @@ export async function handler(event: {
     }
   }
 
-  // Build environment for RunTask — keyed to task owner, not the per-bot userId
+  // Build environment for RunTask
   const taskEnv = [
-    { name: "USER_ID", value: resolvedTaskOwnerId },
+    { name: "USER_ID", value: userId },
     { name: "CALLBACK_URL", value: process.env.WEBSOCKET_CALLBACK_URL ?? "" },
   ];
-  if (resolvedTaskOwnerId !== taskOwnerId) {
+  if (userId !== rawUserId) {
     // Linked user: container needs to know the telegram chat ID for notifications
     taskEnv.push({ name: "TELEGRAM_CHAT_ID", value: String(chatId) });
   }
 
   console.log("[telegram] routing message", {
     userId,
-    taskOwnerId: resolvedTaskOwnerId,
     channel: "telegram",
     agentRuntime,
   });
   const lambdaAgentFunctionArn = process.env.LAMBDA_AGENT_FUNCTION_ARN ?? "";
   await routeMessage({
-    userId: resolvedTaskOwnerId,
+    userId,
     message: text,
     channel: "telegram",
     connectionId,

@@ -204,19 +204,17 @@ If you skip step 6, the old task keeps running — ECS won't restart it automati
 
 Always use `make deploy-telegram` (or `make deploy-all`) rather than running `cdk deploy`
 directly. The Makefile sources `.env` which carries `AI_PROVIDER`, `AI_MODEL`,
-`EXTRA_TELEGRAM_BOTS`, and `THINKING_LEVEL` into the CDK context.
+and `THINKING_LEVEL` into the CDK context.
 
 ## Environment Variables Reference
 
-| Var                           | Where set                     | Purpose                                                                                      |
-| ----------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------- |
-| `AI_PROVIDER`                 | `.env` → CDK → ECS            | `bedrock` or `anthropic`                                                                     |
-| `AI_MODEL`                    | `.env` → CDK → ECS            | Override default model (optional)                                                            |
-| `AWS_REGION`                  | CDK → ECS                     | Region for Bedrock API calls                                                                 |
-| `AWS_PROFILE`                 | CDK → ECS                     | Signals AWS creds available to OpenClaw plugin (set to `default` when `AI_PROVIDER=bedrock`) |
-| `THINKING_LEVEL`              | `.env` → CDK → ECS            | `off\|minimal\|low\|medium\|high\|xhigh\|adaptive\|max`                                      |
-| `BRIDGE_TELEGRAM_TOKEN`       | SSM → ECS secrets             | Primary bot token (renamed from `TELEGRAM_BOT_TOKEN`)                                        |
-| `BRIDGE_TELEGRAM_TOKEN_COACH` | SSM → ECS secrets             | Extra bot tokens (pattern: `BRIDGE_TELEGRAM_TOKEN_{ID}`)                                     |
-| `EXTRA_TELEGRAM_BOTS`         | `.env` → CDK → ECS            | JSON array of extra bot configs                                                              |
-| `USER_ID`                     | Set by watchdog at task start | Telegram user ID (`telegram:NNNNN`)                                                          |
-| `DATA_BUCKET`                 | CDK → ECS                     | S3 bucket for workspace + openclaw config backup                                             |
+| Var                     | Where set                     | Purpose                                                                                      |
+| ----------------------- | ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `AI_PROVIDER`           | `.env` → CDK → ECS            | `bedrock` or `anthropic`                                                                     |
+| `AI_MODEL`              | `.env` → CDK → ECS            | Override default model (optional)                                                            |
+| `AWS_REGION`            | CDK → ECS                     | Region for Bedrock API calls                                                                 |
+| `AWS_PROFILE`           | CDK → ECS                     | Signals AWS creds available to OpenClaw plugin (set to `default` when `AI_PROVIDER=bedrock`) |
+| `THINKING_LEVEL`        | `.env` → CDK → ECS            | `off\|minimal\|low\|medium\|high\|xhigh\|adaptive\|max`                                      |
+| `BRIDGE_TELEGRAM_TOKEN` | SSM → ECS secrets             | Primary bot token (renamed from `TELEGRAM_BOT_TOKEN`)                                        |
+| `USER_ID`               | Set by watchdog at task start | Telegram user ID (`telegram:NNNNN`)                                                          |
+| `DATA_BUCKET`           | CDK → ECS                     | S3 bucket for workspace + openclaw config backup                                             |

@@ -30,24 +30,17 @@ function stripMarkdown(text: string): string {
 
 export class CallbackSender {
   private client: ApiGatewayManagementApiClient;
-  /** Maps connectionId prefix (e.g. "telegram", "telegram-coach") to bot token */
-  private telegramTokens: Map<string, string>;
+  private telegramBotToken?: string;
   private telegramBuffers = new Map<string, string[]>();
 
-  constructor(endpoint: string, telegramBotToken?: string, extraTokens?: Record<string, string>) {
+  constructor(endpoint: string, telegramBotToken?: string) {
     this.client = new ApiGatewayManagementApiClient({ endpoint });
-    this.telegramTokens = new Map();
-    if (telegramBotToken) this.telegramTokens.set("telegram", telegramBotToken);
-    for (const [prefix, token] of Object.entries(extraTokens ?? {})) {
-      this.telegramTokens.set(prefix, token);
-    }
+    this.telegramBotToken = telegramBotToken;
   }
 
   private resolveToken(connectionId: string): string | undefined {
-    // Match longest prefix first: "telegram-coach" before "telegram"
-    const sorted = [...this.telegramTokens.keys()].sort((a, b) => b.length - a.length);
-    for (const prefix of sorted) {
-      if (connectionId.startsWith(prefix + ":")) return this.telegramTokens.get(prefix);
+    if (connectionId.startsWith("telegram:") && this.telegramBotToken) {
+      return this.telegramBotToken;
     }
     return undefined;
   }

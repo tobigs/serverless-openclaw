@@ -9,8 +9,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct } from "constructs";
 import { BRIDGE_PORT, TABLE_NAMES } from "@serverless-openclaw/shared";
-import type { ExtraTelegramBot } from "@serverless-openclaw/shared";
-import { SSM_PARAMS, SSM_SECRETS, extraBotSsmPaths } from "./ssm-params.js";
+import { SSM_PARAMS, SSM_SECRETS } from "./ssm-params.js";
 
 export interface ComputeStackProps extends cdk.StackProps {
   vpc: ec2.IVpc;
@@ -61,24 +60,6 @@ export class ComputeStack extends cdk.Stack {
       { parameterName: SSM_SECRETS.TELEGRAM_BOT_TOKEN },
     );
 
-    // Extra Telegram bots — one SSM secret per bot token
-    const extraBots: ExtraTelegramBot[] = JSON.parse(
-      process.env.EXTRA_TELEGRAM_BOTS ?? "[]",
-    ) as ExtraTelegramBot[];
-
-    const extraBotSecrets: Record<string, ecs.Secret> = {};
-    for (const bot of extraBots) {
-      const paths = extraBotSsmPaths(bot.id);
-      const param = ssm.StringParameter.fromSecureStringParameterAttributes(
-        this,
-        `TelegramBotToken${bot.id}`,
-        { parameterName: paths.botToken },
-      );
-      // Use BRIDGE_TELEGRAM_TOKEN_{ID} so OpenClaw never sees TELEGRAM_BOT_TOKEN_* vars
-      extraBotSecrets[`BRIDGE_TELEGRAM_TOKEN_${bot.id.toUpperCase()}`] =
-        ecs.Secret.fromSsmParameter(param);
-    }
-
     // ECS Cluster — FARGATE_SPOT only
     this.cluster = new ecs.Cluster(this, "Cluster", {
       clusterName: "serverless-openclaw",
@@ -125,7 +106,6 @@ export class ComputeStack extends cdk.Stack {
         // it does not detect Fargate IAM role credentials automatically)
         ...(props.aiProvider === "bedrock" ? { AWS_PROFILE: "default" } : {}),
         ...(process.env.THINKING_LEVEL ? { THINKING_LEVEL: process.env.THINKING_LEVEL } : {}),
-        ...(extraBots.length > 0 ? { EXTRA_TELEGRAM_BOTS: JSON.stringify(extraBots) } : {}),
       },
       secrets: {
         BRIDGE_AUTH_TOKEN: ecs.Secret.fromSsmParameter(bridgeAuthToken),
@@ -135,7 +115,6 @@ export class ComputeStack extends cdk.Stack {
           : {}),
         // Renamed so OpenClaw 2026.6+ does not auto-activate native Telegram plugin
         BRIDGE_TELEGRAM_TOKEN: ecs.Secret.fromSsmParameter(telegramBotToken),
-        ...extraBotSecrets,
       },
       logging: ecs.LogDrivers.awsLogs({
         logGroup,

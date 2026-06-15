@@ -69,20 +69,7 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
 
   const telegramBotToken = env.BRIDGE_TELEGRAM_TOKEN;
 
-  // Build extra bot token map from BRIDGE_TELEGRAM_TOKEN_{ID} env vars
-  const extraTelegramTokens: Record<string, string> = {};
-  for (const [key, val] of Object.entries(process.env)) {
-    const match = key.match(/^BRIDGE_TELEGRAM_TOKEN_(.+)$/);
-    if (match && val) {
-      extraTelegramTokens[`telegram-${match[1].toLowerCase()}`] = val;
-    }
-  }
-
-  const callbackSender = new CallbackSender(
-    env.CALLBACK_URL,
-    telegramBotToken,
-    extraTelegramTokens,
-  );
+  const callbackSender = new CallbackSender(env.CALLBACK_URL, telegramBotToken);
   const openclawClient = new OpenClawClient(gatewayUrl, env.OPENCLAW_GATEWAY_TOKEN);
   await openclawClient.waitForReady();
   const tClient = Date.now();
@@ -105,18 +92,6 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     openclawHome: "/home/openclaw/.openclaw",
   });
 
-  // Build session key map: connectionId prefix → OpenClaw session key
-  // e.g. "telegram-coach" → "agent:coach:main"
-  const sessionKeyMap = new Map<string, string>();
-  try {
-    const extraBots = JSON.parse(process.env.EXTRA_TELEGRAM_BOTS ?? "[]") as Array<{ id: string }>;
-    for (const bot of extraBots) {
-      sessionKeyMap.set(`telegram-${bot.id}`, `agent:${bot.id}:main`);
-    }
-  } catch {
-    /* non-fatal */
-  }
-
   // Phase 3: Bridge server start
   const app = createApp({
     authToken: env.BRIDGE_AUTH_TOKEN,
@@ -125,12 +100,6 @@ export async function startContainer(opts: StartContainerOptions): Promise<void>
     lifecycle,
     processStartTime: t0,
     channel,
-    resolveSessionKey: (connectionId) => {
-      for (const [prefix, sessionKey] of sessionKeyMap) {
-        if (connectionId.startsWith(prefix + ":")) return sessionKey;
-      }
-      return undefined;
-    },
     onMessageComplete: async (uid: string, userMsg: string, assistantMsg: string, ch: Channel) => {
       await saveMessagePair(dynamoSend, uid, userMsg, assistantMsg, ch);
     },

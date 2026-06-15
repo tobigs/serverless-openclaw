@@ -21,21 +21,6 @@ export interface ServerMessage {
 // === Channel ===
 export type Channel = "web" | "telegram";
 
-// === Extra Telegram Bots ===
-export interface ExtraTelegramBot {
-  /** Short identifier used as userId prefix and plugin key, e.g. "coach" */
-  id: string;
-  /** SSM SecureString path for the bot token */
-  ssmBotToken: string;
-  /** SSM SecureString path for the webhook secret */
-  ssmWebhookSecret: string;
-  /** Optional per-bot agent overrides injected into OpenClaw plugins */
-  agentProfile?: {
-    thinking?: "off" | "minimal" | "low" | "medium" | "high";
-    systemPrompt?: string;
-  };
-}
-
 // === DynamoDB Items (architecture.md §5) ===
 export interface ConversationItem {
   PK: string; // USER#{userId}
