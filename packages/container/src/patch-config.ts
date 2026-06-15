@@ -170,12 +170,13 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   }
 
   // Always apply thinking level from env — /think is session-only and doesn't persist.
-  // Valid: off|minimal|low|medium|high|xhigh|adaptive|max
-  // adaptive = OpenClaw auto-selects depth per message; falls back to medium for non-adaptive models.
-  const thinkingLevel = process.env.THINKING_LEVEL ?? "adaptive";
+  // Valid: off|minimal|low|medium|high|xhigh|adaptive|max|default
+  // "default" = let OpenClaw decide globally; per-model overrides below set adaptive for Anthropic.
+  const thinkingLevel = process.env.THINKING_LEVEL ?? "default";
   defaults.thinkingDefault = thinkingLevel;
 
   // Set per-model thinking params so each model in the catalog gets explicit thinking config.
+  // Anthropic models get "adaptive" regardless of the global default.
   if (activeModelId && options?.aiProvider === "bedrock") {
     const region = options.awsRegion ?? "us-east-1";
     const crisPrefix = region.startsWith("eu") ? "eu" : region.startsWith("ap") ? "apac" : "us";
@@ -186,7 +187,7 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
       `${crisPrefix}.anthropic.claude-opus-4-8`,
     ]) {
       const key = `amazon-bedrock/${modelId}`;
-      perModelConfig[key] = { reasoning: true, params: { thinking: { mode: thinkingLevel } } };
+      perModelConfig[key] = { reasoning: true, params: { thinking: { mode: "adaptive" } } };
     }
     defaults.models = perModelConfig;
   }

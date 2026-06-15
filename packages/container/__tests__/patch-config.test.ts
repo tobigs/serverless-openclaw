@@ -140,6 +140,7 @@ describe("patchConfig", () => {
   });
 
   it("should preserve agents configuration from existing config", () => {
+    delete process.env.THINKING_LEVEL;
     const configWithAgents = {
       ...BASE_CONFIG,
       agents: {
@@ -159,7 +160,7 @@ describe("patchConfig", () => {
       defaults: {
         workspace: "/data/workspace",
         model: "anthropic/claude-sonnet-4-20250514",
-        thinkingDefault: "adaptive",
+        thinkingDefault: "default",
       },
     });
   });
