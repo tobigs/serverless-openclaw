@@ -186,45 +186,9 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
       `${crisPrefix}.anthropic.claude-opus-4-8`,
     ]) {
       const key = `amazon-bedrock/${modelId}`;
-      perModelConfig[key] = { params: { thinking: { mode: thinkingLevel } } };
+      perModelConfig[key] = { reasoning: true, params: { thinking: { mode: thinkingLevel } } };
     }
     defaults.models = perModelConfig;
-  }
-
-  // Seed agents.list from EXTRA_TELEGRAM_BOTS — each extra bot gets a named agent entry
-  // with its own model and thinkingDefault if specified in agentProfile.
-  // agents.list is the correct 2026.6 schema location; top-level agents.{id} keys are invalid.
-  try {
-    const extraBots = JSON.parse(process.env.EXTRA_TELEGRAM_BOTS ?? "[]") as Array<{
-      id: string;
-      agentProfile?: { model?: string; thinking?: string; systemPrompt?: string };
-    }>;
-    if (extraBots.length > 0) {
-      const existingList = Array.isArray(agents.list) ? (agents.list as unknown[]) : [];
-      const newList: unknown[] = [];
-      for (const bot of extraBots) {
-        const existing = existingList.find(
-          (e) =>
-            typeof e === "object" && e !== null && (e as Record<string, unknown>).id === bot.id,
-        );
-        if (existing) {
-          newList.push(existing); // keep persisted entry (e.g. /model changes)
-        } else {
-          // Seed from agentProfile — only on first boot
-          const entry: Record<string, unknown> = { id: bot.id };
-          if (bot.agentProfile?.model) {
-            entry.model = { primary: `amazon-bedrock/${bot.agentProfile.model}` };
-          }
-          entry.thinkingDefault =
-            bot.agentProfile?.thinking ?? process.env.THINKING_LEVEL ?? "adaptive";
-          // systemPrompt is not a valid AgentEntrySchema field — belongs in workspace files
-          newList.push(entry);
-        }
-      }
-      agents.list = newList;
-    }
-  } catch {
-    /* non-fatal */
   }
 
   agents.defaults = defaults;
