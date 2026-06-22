@@ -18,7 +18,7 @@ RUN npm run build --workspace=packages/shared --workspace=packages/container
 FROM --platform=linux/arm64 node:22-slim
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl git awscli && \
+    apt-get install -y --no-install-recommends ca-certificates curl git python3 awscli && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv (provides uvx) — used to fetch MCP servers like workspace-mcp on demand
