@@ -265,19 +265,123 @@ describe("patchConfig", () => {
     );
   });
 
-  it("should always apply THINKING_LEVEL env var (session /think command does not persist)", () => {
+  it("should always set thinkingDefault to 'default' — no env override, no forcing", () => {
     const configWithThinking = {
       ...BASE_CONFIG,
       agents: { defaults: { thinkingDefault: "xhigh" } },
     };
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithThinking));
     mockedFs.writeFileSync.mockImplementation(() => {});
+    // Even if THINKING_LEVEL happens to be set in the environment, it must be ignored.
     process.env.THINKING_LEVEL = "low";
 
     patchConfig("/path/to/openclaw.json");
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.agents.defaults.thinkingDefault).toBe("low");
+    expect(written.agents.defaults.thinkingDefault).toBe("default");
     delete process.env.THINKING_LEVEL;
+  });
+
+  it("should seed DeepSeek V3.2 as the active model on first boot in eu-north-1", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      llmModel: "deepseek.v3.2",
+      awsRegion: "eu-north-1",
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents.defaults.model.primary).toBe("amazon-bedrock/deepseek.v3.2");
+    const catalog = written.models.providers["amazon-bedrock"].models;
+    expect(catalog[0].id).toBe("deepseek.v3.2");
+    // Kimi and GLM are registered as switchable alternates
+    expect(catalog.some((m: { id: string }) => m.id === "moonshotai.kimi-k2.5")).toBe(true);
+    expect(catalog.some((m: { id: string }) => m.id === "zai.glm-4.7")).toBe(true);
+  });
+
+  it("should not force thinking params on any model — catalog registration only, no thinking overrides", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      llmModel: "deepseek.v3.2",
+      awsRegion: "eu-north-1",
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents.defaults.models).toBeUndefined();
+    expect(written.agents.defaults.thinkingDefault).toBe("default");
+  });
+
+  it("should target bedrockRegion for the Bedrock endpoint while infra stays in awsRegion", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      llmModel: "deepseek.v3.2",
+      awsRegion: "eu-central-1", // infra stays here
+      bedrockRegion: "eu-north-1", // only Bedrock calls go here
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.models.providers["amazon-bedrock"].baseUrl).toBe(
+      "https://bedrock-runtime.eu-north-1.amazonaws.com",
+    );
+  });
+
+  it("should fall back to awsRegion for the Bedrock endpoint when bedrockRegion is unset", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      awsRegion: "eu-central-1",
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.models.providers["amazon-bedrock"].baseUrl).toBe(
+      "https://bedrock-runtime.eu-central-1.amazonaws.com",
+    );
+  });
+
+  it("should register Claude Sonnet 5 (global inference) as a catalog alternate", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      awsRegion: "eu-central-1",
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    const catalog = written.models.providers["amazon-bedrock"].models;
+    expect(catalog.some((m: { id: string }) => m.id === "global.anthropic.claude-sonnet-5")).toBe(
+      true,
+    );
+    // No per-model thinking overrides are forced — OpenClaw's own defaults apply
+    expect(written.agents.defaults.models).toBeUndefined();
+  });
+
+  it("should allow Claude Sonnet 5 to be seeded directly as the active model via AI_MODEL", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", {
+      aiProvider: "bedrock",
+      llmModel: "global.anthropic.claude-sonnet-5",
+      awsRegion: "eu-central-1",
+    });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents.defaults.model.primary).toBe(
+      "amazon-bedrock/global.anthropic.claude-sonnet-5",
+    );
+    expect(written.models.providers["amazon-bedrock"].models[0].id).toBe(
+      "global.anthropic.claude-sonnet-5",
+    );
   });
 });

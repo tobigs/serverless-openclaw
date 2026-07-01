@@ -158,6 +158,15 @@ npx cdk deploy WebStack --profile $AWS_PROFILE
 npx cdk deploy MonitoringStack --profile $AWS_PROFILE
 ```
 
+> **Redeploying `ComputeStack` or `LambdaAgentStack` alone requires a follow-up `ApiStack` deploy.** Both stacks write the current Fargate task-definition / Lambda function ARN to SSM Parameter Store, and the old task-definition revision becomes `INACTIVE`. `ApiStack`'s Lambdas (`telegram-webhook`, `ws-message`, `watchdog`, `prewarm`) bake that ARN into their own environment variables at `ApiStack`'s deploy time — they do not read SSM live. If you skip the follow-up `ApiStack` deploy, every Telegram/WebSocket message fails with `InvalidParameterException: TaskDefinition is inactive`, which shows up to users as repeated "waking up" retries that never complete:
+>
+> ```bash
+> npx cdk deploy ComputeStack --profile $AWS_PROFILE   # e.g. after changing AI_MODEL
+> npx cdk deploy ApiStack --profile $AWS_PROFILE       # required follow-up — do not skip
+> ```
+>
+> `npx cdk deploy --all` is unaffected since it deploys every stack in dependency order each time.
+
 ### Telegram-only Deployment (no Web UI)
 
 Set `DEPLOY_WEB=false` to skip WebStack and the web asset build entirely. Useful when only Telegram bot functionality is needed, saving build time and CloudFront costs.
@@ -473,6 +482,30 @@ The Bedrock model ID is derived automatically from `AWS_REGION` at runtime. Bedr
 
 Set `AI_MODEL` to override automatic resolution (you are responsible for using the correct format). `bedrockDiscovery` is always disabled — model selection is explicit via `resolveBedrockModel()`.
 
+**Claude Sonnet 5 (recommended default):**
+
+Claude Sonnet 5 (launched 2026-06-30) has **no** `eu.`/`us.`/`ap.` CRIS profile — only **Global** cross-region inference is available. Set `AI_MODEL` directly; no region-derived prefix or `BEDROCK_REGION` override is needed, since the global profile is invokable from any region's `bedrock-runtime` endpoint:
+
+```bash
+AI_PROVIDER=bedrock
+AI_MODEL=global.anthropic.claude-sonnet-5
+```
+
+**Non-Anthropic on-demand models (cheaper alternatives):**
+
+Bedrock also offers cheaper non-Anthropic models. Unlike Claude, these are invoked **directly** (ON_DEMAND) — no CRIS region prefix. Set `AI_MODEL` to the exact model ID below. Availability is region-specific; verify with `aws bedrock list-foundation-models --region <region>` before switching. The models below are confirmed available in **`eu-north-1`** (not `eu-central-1`):
+
+| Model         | `AI_MODEL` value       | Provider    |
+| ------------- | ---------------------- | ----------- |
+| DeepSeek V3.2 | `deepseek.v3.2`        | DeepSeek    |
+| Kimi K2.5     | `moonshotai.kimi-k2.5` | Moonshot AI |
+| GLM 4.7       | `zai.glm-4.7`          | Z.AI        |
+| GLM 5         | `zai.glm-5`            | Z.AI        |
+
+When one of these is the active model, the container's config patcher (`patch-config.ts`) registers the others — plus Claude Sonnet 5 — as switchable alternates in the OpenClaw model catalog (`/model` command). No thinking-level overrides are forced on any model — `thinkingDefault` is always left at `"default"`, letting OpenClaw's own per-model/per-provider behavior apply.
+
+If your deployment's infra region (`AWS_REGION`) doesn't carry these models (e.g. `eu-central-1`), set `BEDROCK_REGION` to a region that does (e.g. `eu-north-1`) — this only redirects the Bedrock runtime endpoint used for inference calls and does **not** move the rest of the stack (Lambda, Fargate, DynamoDB, S3 stay in `AWS_REGION`). See [AI Provider Configuration](#10-ai-provider-configuration) below for the `BEDROCK_REGION` mechanism.
+
 ### Switching to Bedrock
 
 ```bash
@@ -484,6 +517,21 @@ AI_PROVIDER=bedrock npx cdk deploy --all --profile $AWS_PROFILE --region $AWS_RE
 ```
 
 The SecretsStack skips the `AnthropicApiKey` SSM parameter when `AI_PROVIDER=bedrock`. Bedrock IAM permissions (`bedrock:InvokeModel`, `bedrock:InvokeModelWithResponseStream`) are provisioned on both Lambda and Fargate roles regardless of provider (no cost, avoids drift on provider switch).
+
+### Switching to a cheaper non-Anthropic model (e.g. DeepSeek)
+
+```bash
+# In .env — AWS_REGION stays as your infra's deploy region; BEDROCK_REGION targets
+# a region where the model is available (see table above)
+AI_PROVIDER=bedrock
+AI_MODEL=deepseek.v3.2
+BEDROCK_REGION=eu-north-1
+
+# Requires rebuilding/pushing the container image (patch-config.ts runs inside it) —
+# no cdk deploy needed for AI_MODEL/BEDROCK_REGION changes on the Fargate path, since
+# CDK only injects these as container env vars; the model logic itself ships in the image.
+./scripts/deploy-image.sh
+```
 
 ### Switching back to Anthropic
 

@@ -2,16 +2,26 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { LambdaAgentEvent, LambdaAgentResponse } from "../src/types.js";
 
 // Use vi.hoisted to ensure mock references are stable across vi.resetModules()
-const { mockInitConfig, mockDownload, mockUpload, mockResolveSecrets, mockRunAgent, mockAcquire, mockRelease } = vi.hoisted(() => ({
+const {
+  mockInitConfig,
+  mockDownload,
+  mockUpload,
+  mockResolveSecrets,
+  mockRunAgent,
+  mockAcquire,
+  mockRelease,
+} = vi.hoisted(() => ({
   mockInitConfig: vi.fn().mockResolvedValue({
     configDir: "/tmp/.openclaw",
     sessionsDir: "/tmp/.openclaw/agents/default/sessions",
   }),
   mockDownload: vi.fn().mockResolvedValue("/tmp/.openclaw/agents/default/sessions/test.jsonl"),
   mockUpload: vi.fn().mockResolvedValue(undefined),
-  mockResolveSecrets: vi.fn().mockResolvedValue(new Map([
-    ["/serverless-openclaw/secrets/anthropic-api-key", "test-api-key"],
-  ])),
+  mockResolveSecrets: vi
+    .fn()
+    .mockResolvedValue(
+      new Map([["/serverless-openclaw/secrets/anthropic-api-key", "test-api-key"]]),
+    ),
   mockRunAgent: vi.fn(),
   mockAcquire: vi.fn().mockResolvedValue(true),
   mockRelease: vi.fn().mockResolvedValue(undefined),
@@ -46,6 +56,10 @@ vi.mock("../src/session-lock.js", () => ({
 
 describe("handler", () => {
   let originalBucket: string | undefined;
+  let originalAiProvider: string | undefined;
+  let originalAiModel: string | undefined;
+  let originalAwsRegion: string | undefined;
+  let originalBedrockRegion: string | undefined;
 
   beforeEach(() => {
     vi.resetModules();
@@ -61,9 +75,24 @@ describe("handler", () => {
     originalBucket = process.env.SESSION_BUCKET;
     process.env.SESSION_BUCKET = "test-session-bucket";
 
+    // Pin AI provider env vars so these tests don't inherit ambient shell/.env values
+    // (e.g. AI_PROVIDER=bedrock from a local deployment .env). handler.ts resolves
+    // providerConfig from process.env at module load time — tests must control it explicitly.
+    originalAiProvider = process.env.AI_PROVIDER;
+    originalAiModel = process.env.AI_MODEL;
+    originalAwsRegion = process.env.AWS_REGION;
+    originalBedrockRegion = process.env.BEDROCK_REGION;
+    process.env.AI_PROVIDER = "anthropic";
+    delete process.env.AI_MODEL;
+    delete process.env.AWS_REGION;
+    delete process.env.BEDROCK_REGION;
+
     mockRunAgent.mockResolvedValue({
       payloads: [{ text: "Hello from agent!" }],
-      meta: { durationMs: 1000, agentMeta: { provider: "anthropic", model: "claude-sonnet-4-20250514" } },
+      meta: {
+        durationMs: 1000,
+        agentMeta: { provider: "anthropic", model: "claude-sonnet-4-20250514" },
+      },
     });
   });
 
@@ -72,6 +101,26 @@ describe("handler", () => {
       process.env.SESSION_BUCKET = originalBucket;
     } else {
       delete process.env.SESSION_BUCKET;
+    }
+    if (originalAiProvider !== undefined) {
+      process.env.AI_PROVIDER = originalAiProvider;
+    } else {
+      delete process.env.AI_PROVIDER;
+    }
+    if (originalAiModel !== undefined) {
+      process.env.AI_MODEL = originalAiModel;
+    } else {
+      delete process.env.AI_MODEL;
+    }
+    if (originalAwsRegion !== undefined) {
+      process.env.AWS_REGION = originalAwsRegion;
+    } else {
+      delete process.env.AWS_REGION;
+    }
+    if (originalBedrockRegion !== undefined) {
+      process.env.BEDROCK_REGION = originalBedrockRegion;
+    } else {
+      delete process.env.BEDROCK_REGION;
     }
   });
 
@@ -93,7 +142,7 @@ describe("handler", () => {
   it("should return error when SESSION_BUCKET is not set", async () => {
     delete process.env.SESSION_BUCKET;
     const handler = await loadHandler();
-    const result = await handler(createEvent()) as LambdaAgentResponse;
+    const result = (await handler(createEvent())) as LambdaAgentResponse;
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("SESSION_BUCKET");
@@ -146,7 +195,7 @@ describe("handler", () => {
 
   it("should return agent response", async () => {
     const handler = await loadHandler();
-    const result = await handler(createEvent()) as LambdaAgentResponse;
+    const result = (await handler(createEvent())) as LambdaAgentResponse;
 
     expect(result.success).toBe(true);
     expect(result.payloads).toEqual([{ text: "Hello from agent!" }]);
@@ -156,7 +205,7 @@ describe("handler", () => {
     mockRunAgent.mockRejectedValueOnce(new Error("Agent failed"));
 
     const handler = await loadHandler();
-    const result = await handler(createEvent()) as LambdaAgentResponse;
+    const result = (await handler(createEvent())) as LambdaAgentResponse;
 
     expect(result.success).toBe(false);
     expect(result.error).toBe("Agent failed");

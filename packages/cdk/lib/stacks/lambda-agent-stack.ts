@@ -14,6 +14,8 @@ export interface LambdaAgentStackProps extends cdk.StackProps {
   taskStateTable: dynamodb.ITable;
   aiProvider?: string;
   aiModel?: string;
+  /** Region for Bedrock inference calls, independent of the stack's deploy region. */
+  bedrockRegion?: string;
 }
 
 export class LambdaAgentStack extends cdk.Stack {
@@ -53,6 +55,7 @@ export class LambdaAgentStack extends cdk.Stack {
         SESSION_BUCKET: props.dataBucket.bucketName,
         AI_PROVIDER: props.aiProvider ?? "anthropic",
         ...(props.aiModel ? { AI_MODEL: props.aiModel } : {}),
+        ...(props.bedrockRegion ? { BEDROCK_REGION: props.bedrockRegion } : {}),
       },
     });
 

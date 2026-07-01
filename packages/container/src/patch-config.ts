@@ -2,13 +2,24 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
-import { GATEWAY_PORT, resolveProviderConfig } from "@serverless-openclaw/shared";
+import {
+  GATEWAY_PORT,
+  resolveProviderConfig,
+  isOnDemandBedrockModel,
+  CLAUDE_SONNET_5_MODEL,
+} from "@serverless-openclaw/shared";
 import type { AiProvider } from "@serverless-openclaw/shared";
 
 interface PatchOptions {
   llmModel?: string;
   aiProvider?: AiProvider;
   awsRegion?: string;
+  /**
+   * Region for the Bedrock runtime endpoint, independent of awsRegion (the infra's own
+   * deploy region). Lets Bedrock inference calls target a region where a specific model
+   * is available without moving/redeploying the rest of the stack. Defaults to awsRegion.
+   */
+  bedrockRegion?: string;
   workspacePath?: string;
 }
 
@@ -118,8 +129,10 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
   // Always register the Bedrock provider entry explicitly so OpenClaw doesn't need to
   // run async discovery at inference time. Uses the active model ID (persisted or seeded).
   // Additional models are registered in the catalog for /model switching.
+  // Uses bedrockRegion (independent of awsRegion) so Bedrock calls can target a region
+  // where a specific model is available without moving the rest of the stack.
   if (options?.aiProvider === "bedrock" && activeModelId) {
-    const region = options.awsRegion ?? "us-east-1";
+    const region = options.bedrockRegion ?? options.awsRegion ?? "us-east-1";
     const crisPrefix = region.startsWith("eu") ? "eu" : region.startsWith("ap") ? "apac" : "us";
     const modelsSection = (config.models ?? {}) as Record<string, unknown>;
     const providers = (modelsSection.providers ?? {}) as Record<string, unknown>;
@@ -128,6 +141,12 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     // The active model must be first so OpenClaw picks it as default.
     const opusModel = `${crisPrefix}.anthropic.claude-opus-4-8`;
     const sonnetModel = `${crisPrefix}.anthropic.claude-sonnet-4-6`;
+    // Claude Sonnet 5 has no eu./us./ap. CRIS profile — only "global." cross-region
+    // inference is available, so it's listed separately from the region-derived prefix.
+    const sonnet5Model = CLAUDE_SONNET_5_MODEL;
+    // Non-Anthropic models are invoked ON_DEMAND with a direct model ID (no CRIS prefix).
+    // Availability varies by region — these are confirmed in eu-north-1.
+    const onDemandAlternates = ["deepseek.v3.2", "moonshotai.kimi-k2.5", "zai.glm-4.7"];
     const catalogModels: Array<{
       id: string;
       name: string;
@@ -143,8 +162,14 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
       maxTokens: 8192,
     });
 
-    // Add known alternates (skip if same as active)
-    for (const alternate of [sonnetModel, opusModel]) {
+    // Add known alternates (skip if same as active).
+    // Claude alternates only make sense when the active model is itself an Anthropic
+    // CRIS model — mixing them in with a non-Anthropic default is misleading, since the
+    // CRIS prefix computed above may not match the active model's own region logic.
+    const anthropicAlternates = isOnDemandBedrockModel(activeModelId)
+      ? []
+      : [sonnetModel, opusModel, sonnet5Model];
+    for (const alternate of [...anthropicAlternates, ...onDemandAlternates]) {
       if (alternate !== activeModelId) {
         catalogModels.push({
           id: alternate,
@@ -169,28 +194,10 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  // Always apply thinking level from env — /think is session-only and doesn't persist.
-  // Valid: off|minimal|low|medium|high|xhigh|adaptive|max|default
-  // "default" = let OpenClaw decide globally; per-model overrides below set adaptive for Anthropic.
-  const thinkingLevel = process.env.THINKING_LEVEL ?? "default";
-  defaults.thinkingDefault = thinkingLevel;
-
-  // Set per-model thinking params so each model in the catalog gets explicit thinking config.
-  // Anthropic models get "adaptive" regardless of the global default.
-  if (activeModelId && options?.aiProvider === "bedrock") {
-    const region = options.awsRegion ?? "us-east-1";
-    const crisPrefix = region.startsWith("eu") ? "eu" : region.startsWith("ap") ? "apac" : "us";
-    const perModelConfig = (defaults.models ?? {}) as Record<string, unknown>;
-    for (const modelId of [
-      activeModelId,
-      `${crisPrefix}.anthropic.claude-sonnet-4-6`,
-      `${crisPrefix}.anthropic.claude-opus-4-8`,
-    ]) {
-      const key = `amazon-bedrock/${modelId}`;
-      perModelConfig[key] = { reasoning: true, params: { thinking: { mode: "adaptive" } } };
-    }
-    defaults.models = perModelConfig;
-  }
+  // Thinking level: always "default" — let OpenClaw decide per-model, per-provider.
+  // No env override, no per-model forcing. Previously this forced "adaptive" onto every
+  // Anthropic model in the catalog; removed so each model's own default behavior applies.
+  defaults.thinkingDefault = "default";
 
   agents.defaults = defaults;
   config.agents = agents;
@@ -230,12 +237,16 @@ if (process.argv[1]?.endsWith("patch-config.js")) {
   const aiProvider = (process.env.AI_PROVIDER as AiProvider) ?? undefined;
   const llmModel = process.env.AI_MODEL ?? undefined;
   const awsRegion = process.env.AWS_REGION ?? undefined;
+  // Optional override: target a different region for Bedrock inference calls than the
+  // infra's own deploy region (e.g. use a model only available in eu-north-1 while the
+  // rest of the stack stays in eu-central-1). Falls back to awsRegion when unset.
+  const bedrockRegion = process.env.BEDROCK_REGION ?? undefined;
   const workspacePath = process.env.OPENCLAW_WORKSPACE ?? "/data/workspace";
 
   // Restore persisted config from S3 before patching
   restoreConfigFromS3(configPath)
     .then(() => {
-      patchConfig(configPath, { aiProvider, llmModel, awsRegion, workspacePath });
+      patchConfig(configPath, { aiProvider, llmModel, awsRegion, bedrockRegion, workspacePath });
       console.log("[patch-config] Config patched successfully");
     })
     .catch((err) => {

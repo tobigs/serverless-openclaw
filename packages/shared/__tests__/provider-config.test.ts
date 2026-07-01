@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import {
   resolveBedrockModel,
   resolveProviderConfig,
+  isOnDemandBedrockModel,
+  isGlobalInferenceModel,
   BEDROCK_BASE_MODEL,
+  BEDROCK_ON_DEMAND_MODELS,
+  CLAUDE_SONNET_5_MODEL,
 } from "../src/provider-config.js";
 
 describe("resolveBedrockModel", () => {
@@ -75,5 +79,81 @@ describe("resolveProviderConfig", () => {
   it("does not expose bedrockDiscovery on the config object", () => {
     const config = resolveProviderConfig({ AI_PROVIDER: "bedrock" });
     expect(config).not.toHaveProperty("bedrockDiscovery");
+  });
+
+  it("resolves DeepSeek V3.2 as the AI_MODEL override in eu-north-1", () => {
+    const config = resolveProviderConfig({
+      AI_PROVIDER: "bedrock",
+      AWS_REGION: "eu-north-1",
+      AI_MODEL: "deepseek.v3.2",
+    });
+    expect(config.defaultModel).toBe("deepseek.v3.2");
+    expect(config.openclawProvider).toBe("amazon-bedrock");
+  });
+
+  it("resolves Kimi K2.5 as the AI_MODEL override in eu-north-1", () => {
+    const config = resolveProviderConfig({
+      AI_PROVIDER: "bedrock",
+      AWS_REGION: "eu-north-1",
+      AI_MODEL: "moonshotai.kimi-k2.5",
+    });
+    expect(config.defaultModel).toBe("moonshotai.kimi-k2.5");
+  });
+
+  it("resolves GLM 4.7 as the AI_MODEL override in eu-north-1", () => {
+    const config = resolveProviderConfig({
+      AI_PROVIDER: "bedrock",
+      AWS_REGION: "eu-north-1",
+      AI_MODEL: "zai.glm-4.7",
+    });
+    expect(config.defaultModel).toBe("zai.glm-4.7");
+  });
+});
+
+describe("isOnDemandBedrockModel", () => {
+  it("identifies DeepSeek, Kimi (Moonshot), and GLM (Z.AI) as on-demand", () => {
+    expect(isOnDemandBedrockModel("deepseek.v3.2")).toBe(true);
+    expect(isOnDemandBedrockModel("moonshotai.kimi-k2.5")).toBe(true);
+    expect(isOnDemandBedrockModel("zai.glm-4.7")).toBe(true);
+    expect(isOnDemandBedrockModel("zai.glm-5")).toBe(true);
+  });
+
+  it("does not classify Anthropic CRIS models as on-demand", () => {
+    expect(isOnDemandBedrockModel("eu.anthropic.claude-sonnet-4-6")).toBe(false);
+    expect(isOnDemandBedrockModel("anthropic.claude-opus-4-8")).toBe(false);
+  });
+});
+
+describe("BEDROCK_ON_DEMAND_MODELS", () => {
+  it("includes catalog entries for DeepSeek, Kimi, and GLM", () => {
+    expect(BEDROCK_ON_DEMAND_MODELS["deepseek-v3.2"].id).toBe("deepseek.v3.2");
+    expect(BEDROCK_ON_DEMAND_MODELS["kimi-k2.5"].id).toBe("moonshotai.kimi-k2.5");
+    expect(BEDROCK_ON_DEMAND_MODELS["glm-4.7"].id).toBe("zai.glm-4.7");
+    expect(BEDROCK_ON_DEMAND_MODELS["glm-5"].id).toBe("zai.glm-5");
+  });
+});
+
+describe("Claude Sonnet 5 (global inference only, no eu./us./ap. CRIS profile)", () => {
+  it("exposes the global-prefixed model ID", () => {
+    expect(CLAUDE_SONNET_5_MODEL).toBe("global.anthropic.claude-sonnet-5");
+  });
+
+  it("resolves as the AI_MODEL override regardless of AWS_REGION", () => {
+    const config = resolveProviderConfig({
+      AI_PROVIDER: "bedrock",
+      AWS_REGION: "eu-central-1",
+      AI_MODEL: "global.anthropic.claude-sonnet-5",
+    });
+    expect(config.defaultModel).toBe("global.anthropic.claude-sonnet-5");
+  });
+
+  it("isGlobalInferenceModel identifies the global. prefix", () => {
+    expect(isGlobalInferenceModel("global.anthropic.claude-sonnet-5")).toBe(true);
+    expect(isGlobalInferenceModel("eu.anthropic.claude-sonnet-4-6")).toBe(false);
+    expect(isGlobalInferenceModel("deepseek.v3.2")).toBe(false);
+  });
+
+  it("is not classified as an on-demand model (still Anthropic, gets thinking params)", () => {
+    expect(isOnDemandBedrockModel("global.anthropic.claude-sonnet-5")).toBe(false);
   });
 });

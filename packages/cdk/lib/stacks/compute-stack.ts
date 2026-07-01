@@ -27,6 +27,8 @@ export interface ComputeStackProps extends cdk.StackProps {
   fargateMemory?: number;
   aiProvider?: string;
   aiModel?: string;
+  /** Region for Bedrock inference calls, independent of the stack's deploy region. */
+  bedrockRegion?: string;
 }
 
 export class ComputeStack extends cdk.Stack {
@@ -100,12 +102,12 @@ export class ComputeStack extends cdk.Stack {
         METRICS_ENABLED: "true",
         AI_PROVIDER: props.aiProvider ?? "anthropic",
         ...(props.aiModel ? { AI_MODEL: props.aiModel } : {}),
+        ...(props.bedrockRegion ? { BEDROCK_REGION: props.bedrockRegion } : {}),
         AWS_REGION: this.region,
         // AWS_PROFILE triggers Bedrock provider plugin discovery (resolveAwsSdkEnvVarName
         // only checks AWS_ACCESS_KEY_ID, AWS_PROFILE, and AWS_BEARER_TOKEN_BEDROCK —
         // it does not detect Fargate IAM role credentials automatically)
         ...(props.aiProvider === "bedrock" ? { AWS_PROFILE: "default" } : {}),
-        ...(process.env.THINKING_LEVEL ? { THINKING_LEVEL: process.env.THINKING_LEVEL } : {}),
       },
       secrets: {
         BRIDGE_AUTH_TOKEN: ecs.Secret.fromSsmParameter(bridgeAuthToken),
