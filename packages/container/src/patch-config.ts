@@ -194,10 +194,12 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     defaults.workspace = options.workspacePath;
   }
 
-  // Thinking level: always "default" — let OpenClaw decide per-model, per-provider.
-  // No env override, no per-model forcing. Previously this forced "adaptive" onto every
-  // Anthropic model in the catalog; removed so each model's own default behavior applies.
-  defaults.thinkingDefault = "default";
+  // Thinking level: don't set it at all — let OpenClaw use its own default.
+  // "default" is NOT a valid value for this field (schema only allows
+  // off|minimal|low|medium|high|xhigh|adaptive|max) — writing it breaks gateway startup
+  // with "Invalid config ... agents.defaults.thinkingDefault: Invalid input".
+  // If a valid value is already persisted (e.g. via /think), leave it untouched.
+  delete defaults.thinkingDefault;
 
   agents.defaults = defaults;
   config.agents = agents;

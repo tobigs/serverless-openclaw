@@ -160,7 +160,6 @@ describe("patchConfig", () => {
       defaults: {
         workspace: "/data/workspace",
         model: "anthropic/claude-sonnet-4-20250514",
-        thinkingDefault: "default",
       },
     });
   });
@@ -265,7 +264,7 @@ describe("patchConfig", () => {
     );
   });
 
-  it("should always set thinkingDefault to 'default' — no env override, no forcing", () => {
+  it("should not set thinkingDefault — 'default' is not a valid schema value; let OpenClaw decide", () => {
     const configWithThinking = {
       ...BASE_CONFIG,
       agents: { defaults: { thinkingDefault: "xhigh" } },
@@ -278,8 +277,18 @@ describe("patchConfig", () => {
     patchConfig("/path/to/openclaw.json");
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
-    expect(written.agents.defaults.thinkingDefault).toBe("default");
+    expect(written.agents.defaults.thinkingDefault).toBeUndefined();
     delete process.env.THINKING_LEVEL;
+  });
+
+  it("should never write the literal string 'default' as thinkingDefault (invalid per OpenClaw schema — breaks gateway startup)", () => {
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json", { aiProvider: "bedrock", awsRegion: "eu-central-1" });
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents.defaults.thinkingDefault).not.toBe("default");
   });
 
   it("should seed DeepSeek V3.2 as the active model on first boot in eu-north-1", () => {
@@ -313,7 +322,7 @@ describe("patchConfig", () => {
 
     const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
     expect(written.agents.defaults.models).toBeUndefined();
-    expect(written.agents.defaults.thinkingDefault).toBe("default");
+    expect(written.agents.defaults.thinkingDefault).toBeUndefined();
   });
 
   it("should target bedrockRegion for the Bedrock endpoint while infra stays in awsRegion", () => {
