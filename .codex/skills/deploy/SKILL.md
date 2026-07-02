@@ -47,6 +47,11 @@ npx cdk deploy --all --profile $AWS_PROFILE --region $AWS_REGION --require-appro
 
 Stack order (automatic): SecretsStack + NetworkStack -> StorageStack -> {AuthStack, ComputeStack} -> ApiStack -> WebStack + MonitoringStack
 
+> **Deploying `ComputeStack` or `LambdaAgentStack` alone (e.g. after an `AI_MODEL`/`AI_PROVIDER` env var change) replaces the Fargate task definition or Lambda function.
+> The old task-definition revision becomes `INACTIVE`. `ApiStack`'s Lambdas (`telegram-webhook`, `ws-message`, `watchdog`, `prewarm`, etc.) read the task-definition ARN from an SSM parameter, but only at `ApiStack`'s own deploy time — their environment variables do NOT auto-refresh.**
+>
+> **You must run `npx cdk deploy ApiStack` immediately after any standalone `ComputeStack`/`LambdaAgentStack` deploy**, or every Telegram/WebSocket message will fail with `InvalidParameterException: TaskDefinition is inactive` — this surfaces to users as repeated "waking up" retries that never succeed. `npx cdk deploy --all` deploys stacks in dependency order and does not have this problem; it's only an issue with `<StackName>`-scoped deploys.
+
 ### `<StackName>` — Deploy Individual Stack
 
 ```bash

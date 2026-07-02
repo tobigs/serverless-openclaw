@@ -23,7 +23,10 @@ slides/*.pdf
 .idea/
 .vscode/
 .kiro/
-.claude/
+# .claude/skills/ is a generated, committed mirror of .agents/skills/ (see AGENTS.md,
+# `npm run skills:sync`) — everything else under .claude/ stays ignored.
+.claude/*
+!.claude/skills/
 *.swp
 *.swo
 

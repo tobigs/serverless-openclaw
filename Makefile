@@ -51,7 +51,7 @@ synth: ## CDK synth (generate CloudFormation)
 	cd packages/cdk && npx cdk synth --profile $(AWS_PROFILE)
 
 # ⚠️  IMPORTANT: Always deploy via make targets, never via `cd packages/cdk && npx cdk deploy` directly.
-# The Makefile sources .env (AI_PROVIDER, THINKING_LEVEL etc.) which CDK reads
+# The Makefile sources .env (AI_PROVIDER, AI_MODEL, BEDROCK_REGION etc.) which CDK reads
 # at synth time to configure the task definition. Running CDK directly without these vars will
 # produce a task definition that includes ANTHROPIC_API_KEY (even on Bedrock deployments), causing
 # cold starts to fail with ResourceInitializationError.
