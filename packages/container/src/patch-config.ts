@@ -103,6 +103,12 @@ export function patchConfig(configPath: string, options?: PatchOptions): void {
     if (key !== "defaults" && key !== "list") delete agents[key];
   }
 
+  // Named/multi-agent support (agents.list) was removed from this project — every
+  // Telegram/Web session always talks to the single default agent (agent:main:main).
+  // Strip any persisted entries (e.g. a leftover "coach" agent from the removed
+  // EXTRA_TELEGRAM_BOTS feature) so a stale S3-persisted config can't reintroduce it.
+  delete agents.list;
+
   // Determine the active model ID — persisted config wins over env seed.
   // This allows /model and /think commands to survive cold starts.
   const persistedPrimary = (defaults.model as Record<string, unknown> | undefined)?.primary as

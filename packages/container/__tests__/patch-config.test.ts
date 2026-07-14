@@ -72,6 +72,23 @@ describe("patchConfig", () => {
     expect(written.agents?.defaults?.model).toBeUndefined();
   });
 
+  it("should strip agents.list so no named agent (e.g. leftover coach) persists", () => {
+    const configWithNamedAgent = {
+      ...BASE_CONFIG,
+      agents: {
+        defaults: { workspace: "/data/workspace" },
+        list: [{ id: "coach", thinkingDefault: "adaptive" }],
+      },
+    };
+    mockedFs.readFileSync.mockReturnValue(JSON.stringify(configWithNamedAgent));
+    mockedFs.writeFileSync.mockImplementation(() => {});
+
+    patchConfig("/path/to/openclaw.json");
+
+    const written = JSON.parse(mockedFs.writeFileSync.mock.calls[0][1] as string);
+    expect(written.agents.list).toBeUndefined();
+  });
+
   it("should read from and write to the correct path", () => {
     mockedFs.readFileSync.mockReturnValue(JSON.stringify(BASE_CONFIG));
     mockedFs.writeFileSync.mockImplementation(() => {});
